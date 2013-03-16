@@ -22,7 +22,7 @@ public class DBObjectStreamIterator implements Iterator<DBObject> {
 		
 		setNext();
 	}
-	public void setNext() {
+	private void setNext() {
 		next = null;
 		// do all the magic
 		if(reader!=null) {
@@ -52,12 +52,15 @@ public class DBObjectStreamIterator implements Iterator<DBObject> {
 
 	@Override
 	public DBObject next() {
-		final DBObject current = next;
-		if(current==null) {
-			throw new NoSuchElementException();
+		DBObject current;
+		synchronized (this) {
+			current = next;
+			if(current==null) {
+				throw new NoSuchElementException();
+			}
+			
+			setNext();	
 		}
-		
-		setNext();
 		return current;
 	}
 
