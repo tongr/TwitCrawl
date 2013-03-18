@@ -2,8 +2,11 @@ package de.hpi.fgis;
 
 import java.io.IOException;
 
-import org.jsoup.Jsoup;
-import org.jsoup.Connection.Response;
+import com.mongodb.BasicDBObject;
+import com.mongodb.DBObject;
+import com.mongodb.util.JSON;
+
+import de.hpi.fgis.html.WebPageExtractor;
 
 public class HTMLLoader {
 
@@ -11,16 +14,19 @@ public class HTMLLoader {
 	 * @param args
 	 * @throws IOException 
 	 */
-	public static void main(String[] args) throws IOException {
-		String url;
-		if(args.length>0) {
-			url = args[0];
-		} else {
+	public static void main(String[] args) {
+		if(args.length<=0) {
 			throw new IllegalArgumentException("Please specify an URL o load!");
+		} 
+		//MongoDBObjectManager pageMan = new MongoDBObjectManager("webpages", false);
+		WebPageExtractor extractor = new WebPageExtractor();
+		for(String url : args) {
+			System.out.println("extracting data from " + url);
+			
+			DBObject data = extractor.transform(new BasicDBObject("url", url));
+			System.out.println(JSON.serialize(data));
+			// TODO add data to mongo
 		}
-		Response res = Jsoup.connect(url).userAgent("Mozilla/7.0 (X11; U; Linux i2058;) Gecko/Ubuntu/8.04 (hardy) Firefox/4.0.1 (alpha)").timeout(1500).execute();
-		
-		System.out.println(res.headers());
 	}
 
 }
