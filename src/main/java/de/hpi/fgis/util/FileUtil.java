@@ -226,14 +226,15 @@ public class FileUtil {
 		}
 		
 		try {
-			InputStream file = new FileInputStream(inputFile);
+			InputStream file;
 			
 			switch(compression) {
 			case GZIP:
-				file = new GZIPInputStream(file);
+				file = new GZIPInputStream(new FileInputStream(inputFile));
 				break;
 			case NONE:
 				// no compression
+				file = new FileInputStream(inputFile);
 				break;
 			default:
 				throw new IllegalArgumentException("Unknown compression type " + compression);
