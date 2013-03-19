@@ -1,6 +1,7 @@
 package de.hpi.fgis.html;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
 import java.io.BufferedReader;
@@ -15,6 +16,7 @@ import org.junit.Test;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
+import com.mongodb.util.JSON;
 
 public class WebPageExtractorTest {
 	WebPageExtractor extractor;
@@ -31,9 +33,6 @@ public class WebPageExtractorTest {
         	content.append(line);
         }
         br.close();
-	     
-        // remove last newline
-	    //return content.substring(0, content.length()-newline.length());
         return content.toString();
 	}
 	
@@ -59,6 +58,7 @@ public class WebPageExtractorTest {
 		assertEquals(expectedContentType, ((DBObject)data.get("meta")).get("Content-Type"));
 		assertEquals(expectedText, data.get("text"));
 		assertEquals(expectedHtml, data.get("html"));
+		assertNull(data.get("error"));
 	}
 
 	@Test
@@ -69,6 +69,8 @@ public class WebPageExtractorTest {
 		assertNull(data.get("meta"));
 		assertNull(data.get("text"));
 		assertNull(data.get("html"));
+		assertNotNull(data.get("error"));
+		assertEquals("org.jsoup.UnsupportedMimeTypeException", ((DBObject)data.get("error")).get("type"));
 	}
 
 
@@ -97,6 +99,8 @@ public class WebPageExtractorTest {
 		assertNull(data.get(WebPageExtractor.TMP_META_ATTRIBUTE_NAME));
 		assertNull(data.get(WebPageExtractor.TMP_TEXT_CONTENT_ATTRIBUTE_NAME));
 		assertNull(data.get(WebPageExtractor.TMP_HTML_CONTENT_ATTRIBUTE_NAME));
+		assertNotNull(data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME));
+		assertEquals("org.jsoup.UnsupportedMimeTypeException", ((DBObject)data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME)).get("type"));
 	}
 	
 	@Test
@@ -106,6 +110,8 @@ public class WebPageExtractorTest {
 		assertNull(data.get(WebPageExtractor.TMP_META_ATTRIBUTE_NAME));
 		assertNull(data.get(WebPageExtractor.TMP_TEXT_CONTENT_ATTRIBUTE_NAME));
 		assertNull(data.get(WebPageExtractor.TMP_HTML_CONTENT_ATTRIBUTE_NAME));
+		assertNotNull(data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME));
+		assertEquals("org.jsoup.UnsupportedMimeTypeException", ((DBObject)data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME)).get("type"));
 	}
 	
 	@Test
@@ -115,6 +121,9 @@ public class WebPageExtractorTest {
 		assertNull(data.get(WebPageExtractor.TMP_META_ATTRIBUTE_NAME));
 		assertNull(data.get(WebPageExtractor.TMP_TEXT_CONTENT_ATTRIBUTE_NAME));
 		assertNull(data.get(WebPageExtractor.TMP_HTML_CONTENT_ATTRIBUTE_NAME));
+		assertNotNull(data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME));
+		assertEquals("java.net.UnknownHostException", ((DBObject)data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME)).get("type"));
+		System.out.println(JSON.serialize(data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME)));
 	}
 	
 	@Test(expected = IllegalStateException.class)  

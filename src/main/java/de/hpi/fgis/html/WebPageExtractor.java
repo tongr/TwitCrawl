@@ -24,11 +24,13 @@ public class WebPageExtractor implements ITransformation {
 	protected final static String TMP_META_ATTRIBUTE_NAME = "___META";
 	protected final static String TMP_HTML_CONTENT_ATTRIBUTE_NAME = "___HTML";
 	protected final static String TMP_TEXT_CONTENT_ATTRIBUTE_NAME = "___TEXT";
+	protected final static String TMP_ERROR_ATTRIBUTE_NAME = "___ERROR";
 	protected static int TIMEOUT = 1500;
 	private String urlAttribute = "url";
 	private String metaAttribute = "meta";
 	private String htmlAttribute = "html";
 	private String textContentAttribute = "text";
+	private String errorMsgAttribute = "error";
 	private boolean ignoreErrors = true;
 
 	@Override
@@ -44,6 +46,7 @@ public class WebPageExtractor implements ITransformation {
 		orig.put(getMetaAttribute(), data.get(TMP_META_ATTRIBUTE_NAME));
 		orig.put(getHtmlAttribute(), data.get(TMP_HTML_CONTENT_ATTRIBUTE_NAME));
 		orig.put(getTextContentAttribute(), data.get(TMP_TEXT_CONTENT_ATTRIBUTE_NAME));
+		orig.put(getErrorMsgAttribute(), data.get(TMP_ERROR_ATTRIBUTE_NAME));
 
 		return orig;
 	}
@@ -63,14 +66,40 @@ public class WebPageExtractor implements ITransformation {
 			data.put(TMP_TEXT_CONTENT_ATTRIBUTE_NAME, doc.body().text());
 		} catch (Exception e) {
 			if(ignoreErrors()) {
+				data.put(TMP_ERROR_ATTRIBUTE_NAME, formatException(e, 3, 0));
 				logger.log(Level.FINE, "Unable to load data from " + getUrlAttribute(), e);
 			} else {
+				data.put(TMP_ERROR_ATTRIBUTE_NAME, formatException(e, 3, 5));
 				logger.log(Level.SEVERE, "Unable to load data from " + getUrlAttribute(), e);
 				throw new IllegalStateException("Unable to load data from " + getUrlAttribute(), e);
 			}
 		}
 
 		return data;
+	}
+	protected DBObject formatException(Throwable e, int traceDepth, int maxTraceDetails) {
+		if(e==null || traceDepth<=0) {
+			return null;
+		}
+		DBObject error = new BasicDBObject();
+		
+		// add message
+		error.put("message", e.getMessage());
+		error.put("type", e.getClass().getName());
+		
+		// build trace details
+		StringBuilder trace = new StringBuilder();
+		for(int i=0;i<maxTraceDetails&&i<e.getStackTrace().length;i++) {
+			trace.append(e.getStackTrace()[i].toString()).append('\n');
+		}
+		
+		if(trace.length()>0) {
+			error.put("trace", trace.append("...").toString());
+		}
+		
+		error.put("cause", formatException(e.getCause(), traceDepth-1, maxTraceDetails));
+		
+		return error;
 	}
 	
 	protected DBObject getMetaData(Response res, Document doc) {
@@ -125,13 +154,22 @@ public class WebPageExtractor implements ITransformation {
 		return this;
 	}
 	
-
 	public String getHtmlAttribute() {
 		return htmlAttribute;
 	}
 
 	public WebPageExtractor setHtmlAttribute(String htmlAttribute) {
 		this.htmlAttribute = htmlAttribute;
+		return this;
+	}
+
+
+	public String getErrorMsgAttribute() {
+		return errorMsgAttribute;
+	}
+
+	public WebPageExtractor setErrorMsgAttribute(String errorMsgAttribute) {
+		this.errorMsgAttribute = errorMsgAttribute;
 		return this;
 	}
 }
