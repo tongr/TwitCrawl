@@ -12,7 +12,6 @@ import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
 import com.mongodb.util.JSON;
 
-import de.hpi.fgis.database.NoConnectionException;
 import de.hpi.fgis.json.ITransformation;
 /**
  * extends a given {@link DBObject} by the extracted HTML document content and meta information for a given URL (has to be part of the given {@link DBObject}) 
