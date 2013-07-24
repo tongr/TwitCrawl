@@ -12,13 +12,13 @@ import de.hpi.fgis.json.NullFilter;
 import de.hpi.fgis.json.RetainFilter;
 
 /**
- * this class applies an {@link RetainFilter} for a given Tweet-object and parses <b>date values</b><sup>*</sup>.
+ * this class applies an {@link RetainFilter} for a given Tweet-object and parses <b>date values</b><sup>1</sup>.
  * from the Twitter API
  * 
  * <b>tweet attributes:</b>
  * <ul>
- * <li>id</li>
- * <li>created_at<sup>*</sup></li>
+ * <li>tweet_id (from id)</li>
+ * <li>created_at<sup>1</sup></li>
  * <li>text</li>
  * <li>lang</li>
  * <li>retweeted</li>
@@ -28,16 +28,14 @@ import de.hpi.fgis.json.RetainFilter;
  * 
  * <b>author information</b>
  * <ul>
- * <li>user/id</li>
- * <li>user/screen_name</li>
- * <li>user/lang</li>
+ * <li>user_id (from user/id)</li>
  * </ul>
  * 
  * <b>contained entities</b>
  * <ul>
- * <li>entities/hashtags</li>
- * <li>entities/urls</li>
- * <li>entities/user_mentions</li>
+ * <li>hashtags/&#42; (from entities/hashtags/&#42;/text)</li>
+ * <li>urls/&#42; (from entities/urls/&#42;/expanded_url)</li>
+ * <li>user_mentions/&#42; (from entities/user_mentions/&#42;/id)</li>
  * </ul>
  * 
  * <b>place information</b>
@@ -50,8 +48,8 @@ import de.hpi.fgis.json.RetainFilter;
  * 
  * <b>retweet attributes:</b>
  * <ul>
- * <li>retweeted_status/created_at<sup>*</sup></li>
- * <li>retweeted_status/id</li>
+ * <li>retweeted_status/created_at<sup>1</sup></li>
+ * <li>retweeted_status/tweet_id (from retweeted_status/id)</li>
  * <li>retweeted_status/text</li>
  * <li>retweeted_status/lang</li>
  * <li>retweeted_status/retweet_count</li>
@@ -59,15 +57,14 @@ import de.hpi.fgis.json.RetainFilter;
  * 
  * <b>author information</b>
  * <ul>
- * <li>retweeted_status/user/id</li>
- * <li>retweeted_status/user/screen_name</li>
+ * <li>retweeted_status/user_id (from retweeted_status/user/id)</li>
  * </ul>
  * 
  * <b>contained entities</b>
  * <ul>
- * <li>retweeted_status/entities/hashtags</li>
- * <li>retweeted_status/entities/urls</li>
- * <li>retweeted_status/entities/user_mentions</li>
+ * <li>retweeted_status/hashtags/&#42; (from retweeted_status/entities/hashtags/&#42;/text)</li>
+ * <li>retweeted_status/urls/&#42; (from retweeted_status/entities/urls/&#42;/expanded_url)</li>
+ * <li>retweeted_status/user_mentions/&#42; (from retweeted_status/entities/user_mentions/&#42;/id)</li>
  * </ul>
  * 
  * <b>place information</b>
@@ -87,9 +84,17 @@ public class TweetObjectParser extends ChainedTransformation {
 		
 		// copy entity lists
 		AttributeMultiplier multiplier = new AttributeMultiplier();
-		multiplier.addTransformation("entities/hashtags/*/text", "hashtags")
+		multiplier.addTransformation("id", "tweet_id")
+				.addTransformation("user/id", "user_id")
+				.addTransformation("entities/hashtags/*/text", "hashtags")
 				.addTransformation("entities/urls/*/expanded_url", "urls")
 				.addTransformation("entities/user_mentions/*/id", "user_mentions")
+				
+				.addTransformation("retweeted_status/id", "retweeted_status/tweet_id")
+				.addTransformation("retweeted_status/user/id", "retweeted_status/user_id")
+				.addTransformation("retweeted_status/entities/hashtags/*/text", "retweeted_status/hashtags")
+				.addTransformation("retweeted_status/entities/urls/*/expanded_url", "retweeted_status/urls")
+				.addTransformation("retweeted_status/entities/user_mentions/*/id", "retweeted_status/user_mentions")
 				//.addTransformation("id", "_id")
 				;
 		this.addTransformation(multiplier);
@@ -103,38 +108,31 @@ public class TweetObjectParser extends ChainedTransformation {
 		
 		// remove other attributes
 		RetainFilter attributeFilter = new RetainFilter(
-				//"_id", 
-				"id",
-				"created_at", 
-				"text", 
-				"lang", 
+				"tweet_id",
+				"created_at",
+				"text",
+				"lang",
 				"retweeted",
-				"in_reply_to_status_id", 
-				"in_reply_to_user_id", 
-				"user/id",
-				"user/screen_name", 
-				"user/lang", 
-				//"entities/hashtags",
-				//"entities/urls", 
-				//"entities/user_mentions", 
+				"in_reply_to_status_id",
+				"in_reply_to_user_id",
+				"user_id",
 				"hashtags/*",
 				"urls/*",
 				"user_mentions/*",
 				"place/id",
-				"place/country", 
-				"place/full_name", 
+				"place/country",
+				"place/full_name",
 				"place/place_type",
-				"retweeted_status/created_at", 
-				"retweeted_status/id",
-				"retweeted_status/text", 
+				"retweeted_status/tweet_id",
+				"retweeted_status/created_at",
+				"retweeted_status/text",
 				"retweeted_status/lang",
-				"retweeted_status/retweet_count", 
-				"retweeted_status/user/id",
-				"retweeted_status/user/screen_name",
-				"retweeted_status/entities/hashtags",
-				"retweeted_status/entities/urls",
-				"retweeted_status/entities/user_mentions",
-				"retweeted_status/place/id", 
+				"retweeted_status/retweet_count",
+				"retweeted_status/user_id",
+				"retweeted_status/hashtags/*",
+				"retweeted_status/urls/*",
+				"retweeted_status/user_mentions/*",
+				"retweeted_status/place/id",
 				"retweeted_status/place/country",
 				"retweeted_status/place/full_name",
 				"retweeted_status/place/place_type");
