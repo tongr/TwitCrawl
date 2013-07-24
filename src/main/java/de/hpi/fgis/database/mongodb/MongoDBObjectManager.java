@@ -165,7 +165,7 @@ public class MongoDBObjectManager extends AbstractMongoManager {
 		};
 	}
 
-	protected void ensureIndices(boolean unique, String... attributeNames) {
+	public void ensureIndices(boolean unique, String... attributeNames) {
 		super.commit();
 		
 		// add useful indices
@@ -174,7 +174,7 @@ public class MongoDBObjectManager extends AbstractMongoManager {
 		}
 	}
 
-	protected void ensureCombinedIndex(boolean unique, String... attributeNames) {
+	public void ensureCombinedIndex(boolean unique, String... attributeNames) {
 		super.commit();
 		DBObject attributeCombination = new BasicDBObject();
 		StringBuilder name = new StringBuilder();
@@ -227,5 +227,8 @@ public class MongoDBObjectManager extends AbstractMongoManager {
 			dbObject.putAll(newValues);
 			return dbObject;
 		}
+	}
+	public DBCollection collection() {
+		return collection;
 	}
 }
