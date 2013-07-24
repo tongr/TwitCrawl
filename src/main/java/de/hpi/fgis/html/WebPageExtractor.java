@@ -109,7 +109,7 @@ public class WebPageExtractor implements ITransformation {
 		}
 		if(doc!=null) {
 			for(Element meta : doc.select("meta")) {
-				metaData.put(meta.attr("name"), meta.attr("content"));
+				metaData.put(meta.attr("name").replaceAll("\\.", "_"), meta.attr("content"));
 			}
 			
 			metaData.put("title", doc.title());
