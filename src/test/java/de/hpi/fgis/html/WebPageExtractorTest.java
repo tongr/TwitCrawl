@@ -128,7 +128,7 @@ public class WebPageExtractorTest {
 	
 	@Test(expected = IllegalStateException.class)  
 	public void testExtractDataException() {
-		Logger.getLogger(Logger.GLOBAL_LOGGER_NAME).setLevel(Level.OFF);
+		Logger.getLogger(WebPageExtractor.class.getName()).setLevel(Level.OFF);
 		extractor.setIgnoreErrors(false);
 		extractor.extractData("http://illegal.web.url/index.html");
 	}
