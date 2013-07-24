@@ -52,7 +52,7 @@ public class FileUtil {
 			FileUtil.this.close(this.reader);
 		}
 	}
-	private static final Logger logger = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+	private static final Logger logger = Logger.getLogger(FileUtil.class.getName());
 	public String fileSeparator = System.getProperties().getProperty("file.separator");
 	public String lineSeparator = System.getProperties().getProperty("line.separator");
 

@@ -20,7 +20,7 @@ import de.hpi.fgis.json.ITransformation;
  * 
  */
 public class WebPageExtractor implements ITransformation {
-	private static final Logger logger =  Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+	private static final Logger logger =  Logger.getLogger(WebPageExtractor.class.getName());
 	protected final static String TMP_META_ATTRIBUTE_NAME = "___META";
 	protected final static String TMP_HTML_CONTENT_ATTRIBUTE_NAME = "___HTML";
 	protected final static String TMP_TEXT_CONTENT_ATTRIBUTE_NAME = "___TEXT";

@@ -16,7 +16,7 @@ import java.util.logging.Logger;
  *
  */
 public class ProgressReport {
-	private static final Logger logger =  Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+	private static final Logger logger =  Logger.getLogger(ProgressReport.class.getName());
 	protected long start;
 	protected long max;
 	protected long count = 0;
