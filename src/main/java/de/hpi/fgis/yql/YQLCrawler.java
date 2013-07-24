@@ -162,21 +162,4 @@ public class YQLCrawler {
 		}
 		return false;
 	}
-	
-	public static void main(String[] args) throws IOException {
-		YQLCrawler crawler = new YQLCrawler();
-		
-		Map<String, String> redirects = new HashMap<>();
-		Map<String, String> content = crawler.crawl(Arrays.asList("http://bit.ly/13M0qc8","http://ow.ly/nf5Hv", "http://kbstroy.ru/img/mim.php?p=kdw36dfsi1"), redirects);
-		
-		
-		System.out.println("contents of: " + content.keySet());
-		
-		System.out.println("redirects:");
-		for(Entry<String, String> e : redirects.entrySet()) {
-			System.out.print(e.getKey());
-			System.out.print(" --> ");
-			System.out.println(e.getValue());
-		} 
-	}
 }
