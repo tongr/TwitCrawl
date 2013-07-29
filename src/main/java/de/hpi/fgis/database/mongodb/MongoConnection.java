@@ -24,7 +24,7 @@ import de.hpi.fgis.database.NoConnectionException;
  */
 public class MongoConnection implements Closeable {
 	private static final Logger logger = Logger
-			.getLogger(Logger.GLOBAL_LOGGER_NAME);
+			.getLogger(MongoConnection.class.getName());
 
 	private static MongoConnection CURRENT_INSTANCE = null;
 
