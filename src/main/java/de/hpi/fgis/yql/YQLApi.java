@@ -30,17 +30,37 @@ import de.hpi.fgis.concurrency.AsyncResultHandler;
  */
 public abstract class YQLApi implements Closeable {
 	private final String yqlBaseURI;
+//	TODO private final YQLOAuthManager asyncOAuthClient;
 	private final AsyncHttpClient asyncClient;
 
 	protected YQLApi() {
 		this("http://query.yahooapis.com/v1/public/yql?");
 	}
+// TODO
+//	protected YQLApi() {
+//		this("http://query.yahooapis.com/v1/yql/yql?");
+//	}
 
 	protected YQLApi(String baseURI) {
 		this.yqlBaseURI = baseURI;
+//		TODO asyncOAuthClient = new YQLOAuthManager();
 		asyncClient = new AsyncHttpClient();
 		
 	}
+// TODO 
+//	/**
+//	 * tells weather a authenticated endpoint is used to process the request
+//	 * 
+//	 * @see <a
+//	 *      href="http://developer.yahoo.com/yql/guide/usage_info_limits.html"
+//	 *      >http://developer.yahoo.com/yql/guide/usage_info_limits.html</a>
+//	 * @return <code>true</code>, if the authenticated endpoint is used to
+//	 *         process YQL queries, <code>false</code> if the Public endpoint is
+//	 *         addressed
+//	 */
+//	public boolean useAuthenticatedEndpoint() {
+//		return asyncOAuthClient.useAuthentication();
+//	}
 
 	/**
 	 * parse the returned result string provided by the YQL REST API
@@ -323,6 +343,7 @@ public abstract class YQLApi implements Closeable {
 	@Override
 	public void close() {
 		asyncClient.close();
+		// TODO asyncOAuthClient.close();
 	}
 	
 }
