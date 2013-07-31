@@ -15,17 +15,25 @@ import com.mongodb.util.JSON;
  */
 public class YQLApiJSON extends YQLApi {
 	/**
-	 * create a new YQL API access instance that uses JSON serialization
+	 * create a new YQL API access instance that uses JSON serialization and the public YQL endpoint
 	 */
 	public YQLApiJSON() {
 		super();
 	}
 
+	/*
+	 * (non-Javadoc)
+	 * @see de.hpi.fgis.yql.YQLApi#format()
+	 */
 	@Override
 	protected String format() {
 		return "json";
 	}
 
+	/*
+	 * (non-Javadoc)
+	 * @see de.hpi.fgis.yql.YQLApi#parse(java.io.InputStream)
+	 */
 	@Override
 	protected DBObject parse(InputStream jsonIn) {
 		return (DBObject) JSON.parse(convertStreamToString(jsonIn, "UTF-8"));

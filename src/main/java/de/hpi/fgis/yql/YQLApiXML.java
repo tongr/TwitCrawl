@@ -26,7 +26,7 @@ import com.mongodb.DBObject;
  */
 public class YQLApiXML extends YQLApi {
 	/**
-	 * create a new YQL API access instance that uses XML serialization
+	 * create a new YQL API access instance that uses XML serialization and the public YQL endpoint
 	 */
 	public YQLApiXML() {
 		super();

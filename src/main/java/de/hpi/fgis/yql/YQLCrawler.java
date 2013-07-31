@@ -4,12 +4,15 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
 import com.mongodb.DBObject;
+
+import de.hpi.fgis.concurrency.APIAccessRateLimitGuard.RateLimitedTask;
+import de.hpi.fgis.concurrency.AsyncResultHandler;
+import de.hpi.fgis.html.ContentExtractor;
 
 /**
  * this class utilizes the YQL API (JSON) to crawl the contents of a specified list of urls<br/>
@@ -18,25 +21,72 @@ import com.mongodb.DBObject;
  *
  */
 public class YQLCrawler {
+	
+	/**
+	 * this class represents the results of a {@link YQLCrawler} run
+	 * @author tongr
+	 *
+	 */
+	public static class CrawlingResults {
+		private final Map<String, String> contents;
+		private final Map<String, String> redirects;
+		
+		public CrawlingResults() {
+			this(new HashMap<String, String>(), new HashMap<String, String>());
+		}
+		
+		public CrawlingResults(Map<String, String> contents, Map<String, String> redirects) {
+			this.contents = contents;
+			this.redirects = redirects;
+		}
+
+		/**
+		 * the contents of crawled resources (actual_url -> content)
+		 * @return a mapping from an actual url (destination of one or more redirects from a source url) to the content of the actual page (actual_url -> content)
+		 */
+		public Map<String, String> contents() {
+			return contents;
+		}
+		/**
+		 * the redirect information (original_url -> actual_url)
+		 * @return the redirects
+		 */
+		public Map<String, String> redirects() {
+			return redirects;
+		}
+	}
 	private final YQLApiJSON api = new YQLApiJSON();
+
 	/**
 	 * crawls the specified urls and returns a map (actual_url -> content)
 	 * 
 	 * @param urls
 	 *            the urls to be crawled
-	 * @param redirectSink
-	 *            a data sink for redirect information (original_url ->
-	 *            actual_url)
-	 * @return a mapping from an actual url (destination of one or more
-	 *         redirects from a source url) to the content of the actual page
+	 * @return the crawling results including a mapping from an actual url (destination of one or more
+	 *         redirects from a source url) to the content of the actual page as well as redirect information (original_url -> actual_url)
 	 * @throws IOException in case of network problems
 	 */
-	public Map<String, String> crawl(Collection<String> urls,
-			Map<String, String> redirectSink) throws IOException {
-
+	public CrawlingResults crawl(Collection<String> urls) throws IOException {
+		if(urls==null || urls.size()<=0) {
+			return new CrawlingResults();
+		}
 		Map<String, String> contentMap = new HashMap<>();
+		Map<String, String> redirectSink = new HashMap<>();
 		
-		DBObject results = queryYQL(new HashSet<>(urls));
+		// resources for the data table definition:
+		// https://raw.github.com/tongr/yql-tables/master/data/data.headers.xml
+		// alernatives:
+		// http://www.hpi.uni-potsdam.de/fileadmin/hpi/FG_Naumann/projekte/TwitCrawl/data.headers.small.xml
+		// store://wPdxHE6ILC1Ti4oCGOIs0v (faster)
+		DBObject results = api.query(createQuery(urls),
+								"DATA",
+								"store://wPdxHE6ILC1Ti4oCGOIs0v");
+		
+		if(results!=null && results.containsField("resources") && results.get("resources") instanceof DBObject) {
+			results = (DBObject) results.get("resources");
+		} else {
+			results = null;
+		}
 		
 		if( results!=null ) {
 			List<?> resultList;
@@ -58,10 +108,71 @@ public class YQLCrawler {
 			
 		}
 
-		return contentMap;
+		return new CrawlingResults(contentMap, redirectSink);
+	}
+	
+	/**
+	 * crawls the specified urls and returns a map (actual_url -> content)
+	 * 
+	 * @param urls
+	 *            the urls to be crawled
+	 * @param asyncResultHandler
+	 *         an asynchronous result processor that gets informed if the results are available, whereas the crawling results include a mapping from an actual url (destination of one or more
+	 *         redirects from a source url) to the content of the actual page as well as redirect information (original_url -> actual_url)
+	 * @throws IOException in case of network problems
+	 */
+	public void crawlAsync(Collection<String> urls, final AsyncResultHandler<CrawlingResults> asyncResultHandler) throws IOException {
+		if(urls==null || urls.size()<=0) {
+			asyncResultHandler.onCompleted(new CrawlingResults());
+		}
+
+		api.queryAsync(createQuery(urls),
+				"DATA",
+				"store://wPdxHE6ILC1Ti4oCGOIs0v",
+				new AsyncResultHandler<DBObject>() {
+					@Override
+					public void onCompleted(DBObject results) {
+						Map<String, String> contentMap = new HashMap<>();
+						Map<String, String> redirectSink = new HashMap<>();
+						
+						if(results!=null && results.containsField("resources") && results.get("resources") instanceof DBObject) {
+							results = (DBObject) results.get("resources");
+						} else {
+							results = null;
+						}
+						
+						if( results!=null ) {
+							List<?> resultList;
+							if (results  instanceof List) {
+								resultList = (List<?>) results;
+							} else {
+								// in case of only one value:
+								resultList = Arrays.asList(results);
+							}
+							
+							for(int i=0;i<resultList.size();i++) {
+								if(resultList.get(i)!=null && resultList.get(i) instanceof DBObject) {
+									DBObject resultItem = (DBObject) resultList.get(i);
+									if(extractContent(resultItem, contentMap)) {
+										extractRedirects(resultItem, redirectSink);
+									}
+								}
+							}
+							
+						}
+						
+						asyncResultHandler.onCompleted(new CrawlingResults(contentMap, redirectSink));
+					}
+
+					@Override
+					public void onThrowable(Throwable t) {
+						asyncResultHandler.onThrowable(t);
+					}
+			
+				});
 	}
 
-	private DBObject queryYQL(Collection<String> urls)
+	private String createQuery(Collection<String> urls)
 			throws IOException {
 		StringBuilder q = new StringBuilder("select * from DATA where url in (");
 		boolean first = true;
@@ -74,20 +185,8 @@ public class YQLCrawler {
 			q.append('\'').append(url).append('\'');
 		}
 		q.append(") and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)' and htmlstr='true'");
-
-		// resources for the data table definition:
-		// https://raw.github.com/tongr/yql-tables/master/data/data.headers.xml
-		// alernatives:
-		// http://www.hpi.uni-potsdam.de/fileadmin/hpi/FG_Naumann/projekte/TwitCrawl/data.headers.small.xml
-		// store://wPdxHE6ILC1Ti4oCGOIs0v (faster)
-		DBObject result = api.query(q.toString(),
-						"DATA",
-						"store://wPdxHE6ILC1Ti4oCGOIs0v");
-
-		if(result!=null && result.containsField("resources") && result.get("resources") instanceof DBObject) {
-			return (DBObject) result.get("resources");
-		}
-		return null;
+		
+		return q.toString();
 	}
 
 	private boolean extractContent(DBObject resultItem, Map<String, String> contentSink) {
@@ -161,5 +260,50 @@ public class YQLCrawler {
 			}
 		}
 		return false;
+	}
+	
+	public static void main(String[] args) throws IOException {
+		final YQLAccessRateLimitGuard guard = YQLAccessRateLimitGuard.getInstance();
+		final YQLCrawler crawler = new YQLCrawler();
+		
+		RateLimitedTask task = new RateLimitedTask() {
+			
+			int i=3;
+			@Override
+			public void run() {
+				CrawlingResults results;
+				try {
+					results = crawler.crawl(Arrays.asList("http://bit.ly/13M0qc8","http://ow.ly/nf5Hv", "http://kbstroy.ru/img/mim.php?p=kdw36dfsi1"));
+				} catch (IOException e1) {
+					e1.printStackTrace();
+					return;
+				}
+				
+				
+				System.out.println("contents:");
+				for(Entry<String, String> e : results.contents().entrySet()) {
+					System.out.println(e.getKey());
+					System.out.print(" --> ");
+					System.out.println(ContentExtractor.CanolaExtractor.extractText(e.getValue()));
+				}
+				
+				System.out.println("redirects:");
+				for(Entry<String, String> e : results.redirects().entrySet()) {
+					System.out.print(e.getKey());
+					System.out.print(" --> ");
+					System.out.println(e.getValue());
+				} 
+			}
+			
+			@Override
+			public boolean repeat() {
+				if(0>=--i) {
+					guard.close();
+					return false;
+				}
+				return true;
+			}
+		};
+		guard.add(task);
 	}
 }

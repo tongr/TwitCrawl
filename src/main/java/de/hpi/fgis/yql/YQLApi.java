@@ -1,19 +1,24 @@
 package de.hpi.fgis.yql;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
-import java.net.URL;
-import java.net.URLEncoder;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Scanner;
+import java.util.concurrent.ExecutionException;
 
 import com.mongodb.DBObject;
+import com.ning.http.client.AsyncCompletionHandler;
+import com.ning.http.client.AsyncHttpClient;
+import com.ning.http.client.FluentStringsMap;
+import com.ning.http.client.ListenableFuture;
+import com.ning.http.client.Response;
+
+import de.hpi.fgis.concurrency.AsyncResultHandler;
 
 /**
  * this abstract class provides different possibilities to access the <a
@@ -23,22 +28,19 @@ import com.mongodb.DBObject;
  * @author tonigr
  * 
  */
-public abstract class YQLApi {
-	private final String baseURI;
+public abstract class YQLApi implements Closeable {
+	private final String yqlBaseURI;
+	private final AsyncHttpClient asyncClient;
 
-	public YQLApi() {
+	protected YQLApi() {
 		this("http://query.yahooapis.com/v1/public/yql?");
 	}
 
-	public YQLApi(String baseURI) {
-		this.baseURI = baseURI;
+	protected YQLApi(String baseURI) {
+		this.yqlBaseURI = baseURI;
+		asyncClient = new AsyncHttpClient();
+		
 	}
-
-	// // TODO authentificated access --> for authenticated use simpleyql
-	// public YQLApi(OAuth auth) {
-	// this("http://query.yahooapis.com/v1/yql/yql?");
-	// ...
-	// }
 
 	/**
 	 * parse the returned result string provided by the YQL REST API
@@ -71,6 +73,22 @@ public abstract class YQLApi {
 	public DBObject query(String query) throws IOException {
 		return query(query, (Collection<Entry<String, String>>) null);
 	}
+	
+	/**
+	 * perform the specified query asynchronously via asyncResultHandler
+	 * 
+	 * @param query
+	 *            the query to be executed (for instance
+	 *            "select * from weather.forecast where woeid=638242" gets the
+	 *            weather forecast for Berlin, Germany)
+	 * @param asyncResultHandler
+	 *            an asynchronous result processor that gets informed if the results are available
+	 * @throws IOException
+	 *             if some network errors occur
+	 */
+	public void queryAsync(String query, AsyncResultHandler<DBObject> asyncResultHandler) throws IOException {
+		queryAsync(query, (Collection<Entry<String, String>>) null, false, asyncResultHandler);
+	}
 
 	/**
 	 * perform the specified query
@@ -85,7 +103,7 @@ public abstract class YQLApi {
 	 *            "weather")
 	 * @param tableDefURI
 	 *            url of the table definition file (i.e.
-	 *            "<a href='http://www.datatables.org/weather/weather.bylocation.xml'>http://www.datatables.org/weather/weather.bylocation.xml</a>"
+	 *            "<a href='http://www.datatables.org/weather/weather.bylocation.xml' >http://www.datatables.org/weather/weather.bylocation.xml</a>"
 	 *            )
 	 * @return a {@link DBObject} representation of the results (i.e. the
 	 *         forcast data)
@@ -97,6 +115,33 @@ public abstract class YQLApi {
 		return query(query,
 				Arrays.asList((Entry<String, String>) new SimpleEntry<>(
 						tableName, tableDefURI)));
+	}
+
+	/**
+	 * perform the specified query asynchronously via asyncResultHandler
+	 * 
+	 * @param query
+	 *            the query to be executed (for instance
+	 *            "select * from weather where location='Berlin, Germany'" gets
+	 *            the weather forecast for Berlin, Germany given the following
+	 *            table definition)
+	 * @param tableName
+	 *            name of the custom datatable used in the query (i.e.
+	 *            "weather")
+	 * @param tableDefURI
+	 *            url of the table definition file (i.e.
+	 *            "<a href='http://www.datatables.org/weather/weather.bylocation.xml'>http://www.datatables.org/weather/weather.bylocation.xml</a>"
+	 *            )
+	 * @param asyncResultHandler
+	 *            an asynchronous result processor that gets informed if the results are available
+	 * @throws IOException
+	 *             if some network errors occur
+	 */
+	public void queryAsync(String query, String tableName, String tableDefURI, AsyncResultHandler<DBObject> asyncResultHandler)
+			throws IOException {
+		queryAsync(query,
+				Arrays.asList((Entry<String, String>) new SimpleEntry<>(
+						tableName, tableDefURI)), false, asyncResultHandler);
 	}
 
 	/**
@@ -124,6 +169,31 @@ public abstract class YQLApi {
 	}
 
 	/**
+	 * perform the specified query asynchronously via asyncResultHandler
+	 * 
+	 * @param query
+	 *            the query to be executed (for instance
+	 *            "select * from weather where location='Berlin, Germany'" gets
+	 *            the weather forecast for Berlin, Germany given the following
+	 *            table definition)
+	 * @param tables
+	 *            a map containing all custom datatable definitions -- keys:
+	 *            name of the table used in the query (i.e. "weather"), values:
+	 *            url of the table definition file (i.e.
+	 *            "<a href='http://www.datatables.org/weather/weather.bylocation.xml'>http://www.datatables.org/weather/weather.bylocation.xml</a>"
+	 *            )
+	 * @param asyncResultHandler
+	 *            an asynchronous result processor that gets informed if the results are available
+	 *            
+	 * @throws IOException
+	 *             if some network errors occur
+	 */
+	public void queryAsync(String query, Map<String, String> tables, AsyncResultHandler<DBObject> asyncResultHandler)
+			throws IOException {
+		queryAsync(query, tables.entrySet(), false, asyncResultHandler);
+	}
+
+	/**
 	 * perform the specified query and return additional meta information
 	 * 
 	 * @param query
@@ -147,6 +217,12 @@ public abstract class YQLApi {
 		return queryMeta(query, tables.entrySet(), true);
 	}
 
+	/**
+	 * simple util method to create a String from an input stream
+	 * @param is the input stream to read
+	 * @param charset the charset
+	 * @return the resulting string content
+	 */
 	protected String convertStreamToString(InputStream is, String charset) {
 		Scanner s = new Scanner(is, charset);
 		try {
@@ -159,37 +235,74 @@ public abstract class YQLApi {
 
 	private DBObject query(String query,
 			Collection<Entry<String, String>> tableDefs) throws IOException {
-		return (DBObject) ((DBObject) queryMeta(query, tableDefs, false).get(
-				"query")).get("results");
+		return extractResults(queryMeta(query, tableDefs, false));
+	}
+	
+	private void queryAsync(String query,
+			Collection<Entry<String, String>> tableDefs, boolean debug, final AsyncResultHandler<DBObject> asyncResultHandler)
+			throws IOException {
+		// asyncClient.prepareGet(yqlBaseURI) does not work with parameter definitions
+		asyncClient.preparePost(yqlBaseURI).setParameters(toParameterMap(query, tableDefs, debug)).execute(new AsyncCompletionHandler<DBObject>(){
+
+		    @Override
+		    public DBObject onCompleted(Response response) throws Exception{
+		    	DBObject data = extractResults(parse(response.getResponseBodyAsStream()));
+		    	
+		    	//asyncHttpClient.close();
+		    	asyncResultHandler.onCompleted(data);
+		        return data;
+		    }
+
+		    @Override
+		    public void onThrowable(Throwable t){
+		    	//asyncHttpClient.close();
+		    	asyncResultHandler.onThrowable(t);
+		    }
+		    
+		    
+		});
 	}
 
-	// TODO another possibility is the env parameter linking to a table def
-	// file: env=http://datatables.org/alltables.env
 	private DBObject queryMeta(String query,
 			Collection<Entry<String, String>> tableDefs, boolean debug)
 			throws IOException {
-		Map<String, String> parameters = new HashMap<>(2);
-		parameters.put("q", toTableDefString(tableDefs) + query);
-		parameters.put("callback", "");
-		parameters.put("format", format());
-		if (debug) {
-			parameters.put("diagnostics", "true");
-			// parameters.put("debug", "true");
-		}
-
-		String requestUri = baseURI + toParameterString(parameters.entrySet());
-
-		URL url = new URL(requestUri);
-
-		InputStream in = url.openStream();
-
+		// asyncClient.prepareGet(yqlBaseURI) does not work with parameter definitions
+		ListenableFuture<Response> response = asyncClient.preparePost(yqlBaseURI).setParameters(toParameterMap(query, tableDefs, debug)).execute();
+		
+		InputStream in = null;
 		try {
+			in = response.get().getResponseBodyAsStream();
 			return parse(in);
+		} catch (InterruptedException | ExecutionException e) {
+			throw new IOException("Unable to fetch date from YQL endpoint!" ,e);
 		} finally {
-			in.close();
+			if(in!=null) {
+				in.close();
+			}
 		}
 	}
+	
+	private DBObject extractResults(DBObject completeResult) {
+		if(completeResult==null || !completeResult.containsField("query") || !((DBObject) completeResult.get("query")).containsField("results")) {
+			return null;
+		}
+		return (DBObject) ((DBObject) completeResult.get("query")).get("results");
+	}
+	
+	private FluentStringsMap toParameterMap(String query,
+			Collection<Entry<String, String>> tableDefs, boolean debug) {
+		FluentStringsMap parameters = new FluentStringsMap();
+		parameters.add("q", toTableDefString(tableDefs) + query);
+		parameters.add("callback", "");
+		parameters.add("format", format());
+		if (debug) {
+			parameters.add("diagnostics", "true");
+			// parameters.add("debug", "true");
+		}
 
+		return parameters;
+	}
+	
 	private String toTableDefString(Collection<Entry<String, String>> tableDefs) {
 		if (tableDefs == null || tableDefs.size() == 0) {
 			return "";
@@ -202,28 +315,14 @@ public abstract class YQLApi {
 
 		return result.toString();
 	}
-
-	private String toParameterString(Iterable<Entry<String, String>> parameters) {
-		StringBuilder result = new StringBuilder();
-		boolean first = true;
-		for (Entry<String, String> entry : parameters) {
-			if (first) {
-				first = false;
-			} else {
-				result.append('&');
-			}
-			result.append(entry.getKey()).append('=')
-					.append(escape(entry.getValue()));
-		}
-
-		return result.toString();
+	
+	/*
+	 * (non-Javadoc)
+	 * @see java.io.Closeable#close()
+	 */
+	@Override
+	public void close() {
+		asyncClient.close();
 	}
-
-	private String escape(String value) {
-		try {
-			return URLEncoder.encode(value, "UTF-8");
-		} catch (UnsupportedEncodingException e) {
-			throw new IllegalStateException("Unknown encoding UTF-8!", e);
-		}
-	}
+	
 }

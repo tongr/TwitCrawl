@@ -26,6 +26,6 @@ public class YQLAccessRateLimitGuard extends APIAccessRateLimitGuard {
 	private YQLAccessRateLimitGuard() {
 		// 2000 requests in 3 600 000ms (1h) --> 1800ms delay + 46ms as buffer
 		// (thus max. requests ~1950)
-		super(0, 1846);
+		super(10, 1846);
 	}
 }
