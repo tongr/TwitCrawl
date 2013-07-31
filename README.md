@@ -15,6 +15,8 @@ This prototype package supports different utilities for the extraction of tweet 
 * JUnit 4 - http://junit.org/
 * mongo-java-driver 2.10.1 - https://github.com/mongodb/mongo-java-driver (see also http://www.mongodb.org/)
 * jsoup 1.7.2 - http://jsoup.org/
+* boilerpipe 1.1.0 - https://code.google.com/p/boilerpipe/
+* async-http-client 1.7.16 - https://github.com/AsyncHttpClient/async-http-client (see also http://sonatype.github.io/async-http-client/)
 
 ## How to
 1. mvn install
