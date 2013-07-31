@@ -88,6 +88,16 @@ public class ProgressReport {
 		}
 	}
 	
+	/**
+	 * progress increase
+	 */
+	public synchronized void inc(long increment){
+		count+=increment;
+		if(count % report == 0){
+			print(count);
+		}
+	}
+	
 	public synchronized void set(long newCount){
 		long oldCount = count;
 		count = newCount;
