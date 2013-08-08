@@ -93,9 +93,15 @@ public abstract class AbstractMongoManager implements Closeable {
 			// nothing to do
 			return;
 		}
-		synchronized (collection) {
-			collection.insert(bulk);
+		ArrayList<DBObject> bulkCopy;
+		// make a synchronized copy of the bulk
+		synchronized (bulk) {
+			bulkCopy = new ArrayList<>(bulk);
 			bulk.clear();
+		}
+		// commit this bulk
+		synchronized (collection) {
+			collection.insert(bulkCopy);
 		}
 	}
 	
