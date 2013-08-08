@@ -8,9 +8,11 @@ import com.mongodb.DBObject;
 
 /**
  * 
- * straight forward mockup for DBObject storage in MongoDB supporting default bulk insert handling 
+ * straight forward mockup for DBObject storage in MongoDB supporting default
+ * bulk insert handling
+ * 
  * @author tongr
- *
+ * 
  */
 public class MongoDBObjectManager extends AbstractMongoManager {
 	private final DBCollection collection;
@@ -79,6 +81,9 @@ public class MongoDBObjectManager extends AbstractMongoManager {
 	 * stores the specified {@link DBObject} instances
 	 */
 	public void store(Iterable<? extends DBObject> instances) {
+		if(instances==null) {
+			return;
+		}
 		for(DBObject instance : instances) {
 			DBObject newDocument = merger==null?instance:merger.mergeWithDBObject(instance);
 			
