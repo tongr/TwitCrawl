@@ -1,5 +1,6 @@
 package de.hpi.fgis.yql;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
@@ -20,7 +21,7 @@ import de.hpi.fgis.html.ContentExtractor;
  * @author tongr
  *
  */
-public class YQLCrawler {
+public class YQLCrawler implements Closeable {
 	
 	/**
 	 * this class represents the results of a {@link YQLCrawler} run
@@ -121,7 +122,7 @@ public class YQLCrawler {
 	 *         redirects from a source url) to the content of the actual page as well as redirect information (original_url -> actual_url)
 	 * @throws IOException in case of network problems
 	 */
-	public void crawlAsync(Collection<String> urls, final AsyncResultHandler<CrawlingResults> asyncResultHandler) throws IOException {
+	public void crawlAsync(final Collection<String> urls, final AsyncResultHandler<CrawlingResults> asyncResultHandler) throws IOException {
 		if(urls==null || urls.size()<=0) {
 			asyncResultHandler.onCompleted(new CrawlingResults());
 		}
@@ -299,11 +300,17 @@ public class YQLCrawler {
 			public boolean repeat() {
 				if(0>=--i) {
 					guard.close();
+					crawler.close();
 					return false;
 				}
 				return true;
 			}
 		};
 		guard.add(task);
+	}
+	
+	@Override
+	public void close() {
+		api.close();
 	}
 }

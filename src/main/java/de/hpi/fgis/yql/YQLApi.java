@@ -238,8 +238,8 @@ public abstract class YQLApi implements Closeable {
 		return extractResults(queryMeta(query, tableDefs, false));
 	}
 	
-	private void queryAsync(String query,
-			Collection<Entry<String, String>> tableDefs, boolean debug, final AsyncResultHandler<DBObject> asyncResultHandler)
+	private void queryAsync(final String query,
+			final Collection<Entry<String, String>> tableDefs, boolean debug, final AsyncResultHandler<DBObject> asyncResultHandler)
 			throws IOException {
 		// asyncClient.prepareGet(yqlBaseURI) does not work with parameter definitions
 		asyncClient.preparePost(yqlBaseURI).setParameters(toParameterMap(query, tableDefs, debug)).execute(new AsyncCompletionHandler<DBObject>(){
