@@ -46,7 +46,7 @@ public class TwitterDumpFileReader implements Iterable<DBObject> {
 	public boolean showProgress() {
 		return showProgress;
 	}
-	public TwitterDumpFileReader setShowProgress(boolean showProgress) {
+	public TwitterDumpFileReader showProgress(boolean showProgress) {
 		this.showProgress = showProgress;
 		return this;
 	}

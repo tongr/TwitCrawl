@@ -4,6 +4,7 @@ import java.io.InputStream;
 
 import com.mongodb.DBObject;
 import com.mongodb.util.JSON;
+import com.mongodb.util.JSONParseException;
 
 /**
  * this class provides the possibility to access the <a
@@ -36,6 +37,13 @@ public class YQLApiJSON extends YQLApi {
 	 */
 	@Override
 	protected DBObject parse(InputStream jsonIn) {
-		return (DBObject) JSON.parse(convertStreamToString(jsonIn, "UTF-8"));
+		String data = convertStreamToString(jsonIn, "UTF-8");
+		try {
+			return (DBObject) JSON.parse(data);
+		} catch (JSONParseException e) {
+			System.out.println(data);
+			throw e;
+		}
+		
 	}
 }
