@@ -123,7 +123,7 @@ public class WebPageExtractorTest {
 		assertNull(data.get(WebPageExtractor.TMP_HTML_CONTENT_ATTRIBUTE_NAME));
 		assertNotNull(data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME));
 		assertEquals("java.net.UnknownHostException", ((DBObject)data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME)).get("type"));
-		System.out.println(JSON.serialize(data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME)));
+		//System.out.println(JSON.serialize(data.get(WebPageExtractor.TMP_ERROR_ATTRIBUTE_NAME)));
 	}
 	
 	@Test(expected = IllegalStateException.class)  
