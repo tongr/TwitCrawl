@@ -5,13 +5,24 @@ import static org.junit.Assert.assertEquals;
 import java.io.IOException;
 import java.util.HashMap;
 
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import com.mongodb.DBObject;
 import com.mongodb.util.JSON;
 
 public class YQLApiJSONTest {
-	private YQLApiJSON api = new YQLApiJSON();
+	private YQLApiJSON api;
+	@Before
+	public void setUp() throws Exception {
+		api = new YQLApiJSON();
+	}
+	@After
+	public void shutDown() throws Exception {
+		api.close();
+		api = null;
+	}
 
 	@Test
 	public void testFormat() {
