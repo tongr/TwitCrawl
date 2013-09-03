@@ -6,22 +6,22 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 
-import org.junit.After;
-import org.junit.Before;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.mongodb.DBObject;
 import com.mongodb.util.JSON;
 
 public class YQLApiXMLTest {
-	YQLApiXML api;
+	private static YQLApiXML api;
 	
-	@Before
-	public void setUp() throws Exception {
+	@BeforeClass
+	public static void setUp() throws Exception {
 		api = new YQLApiXML();
 	}
-	@After
-	public void shutDown() throws Exception {
+	@AfterClass
+	public static void shutDown() throws Exception {
 		api.close();
 		api = null;
 	}
