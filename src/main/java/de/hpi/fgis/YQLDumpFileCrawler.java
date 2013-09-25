@@ -31,7 +31,8 @@ public class YQLDumpFileCrawler {
 	public static void main(String[] args) {
 		String folder;
 		if(args.length<=0) {
-			folder = "./";
+			//folder = "./";
+			throw new IllegalArgumentException("Please specify an input folder!");
 		} else {
 			folder = args[0];
 		}
