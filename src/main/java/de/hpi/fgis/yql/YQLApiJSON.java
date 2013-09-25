@@ -39,6 +39,10 @@ public class YQLApiJSON extends YQLApi {
 	protected DBObject parse(InputStream jsonIn) {
 		String data = convertStreamToString(jsonIn, "UTF-8");
 		try {
+			if(data==null || !data.matches("^\\s*{")) {
+				// log the erroneous data
+				return null;
+			}
 			return (DBObject) JSON.parse(data);
 		} catch (JSONParseException e) {
 			System.out.println(data);
