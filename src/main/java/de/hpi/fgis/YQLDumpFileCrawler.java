@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
@@ -61,21 +62,21 @@ public class YQLDumpFileCrawler {
 				try {
 					final ArrayList<String> toBeCrawled = new ArrayList<>(chunkSize*2);
 					final ArrayList<AlignmentCandidate> currentAlignments = new ArrayList<>(chunkSize);
-					final HashMap<String, Object> cachedRedirects = new HashMap<>();
+					final HashMap<String, String> cachedRedirects = new HashMap<>();
 					
 					synchronized (alignmentCandidates) {
 						while(toBeCrawled.size()<chunkSize && alignmentCandidates.size()>0) {
 							AlignmentCandidate candidate = alignmentCandidates.poll();
 							currentAlignments.add(candidate);
 							
-							// TODO move out of the synchronized block
+							// TODO move out of the synchronized block?
 							for(String url : candidate.originalUrls()) {
 								DBObject redirect = redirectMan.findOne(url);
 								
 								if(redirect==null) {
 									toBeCrawled.add(url);
 								} else {
-									cachedRedirects.put(url, redirect.get("to")); 
+									cachedRedirects.put(url, (String) redirect.get("to")); 
 								}
 							}
 						}
@@ -91,8 +92,11 @@ public class YQLDumpFileCrawler {
 							
 							@Override
 							public void onCompleted(CrawlingResults data) {
+								if(data==null) {
+									return;
+								}
 								try {
-									ArrayList<DBObject> items = new ArrayList<>(chunkSize*3);
+									ArrayList<DBObject> items = new ArrayList<>(data.redirects().size());
 
 									// store redirects
 									for(Entry<String, String> e : data.redirects().entrySet()) {
@@ -103,9 +107,9 @@ public class YQLDumpFileCrawler {
 									}
 									redirectMan.store(items);
 
-									items.clear();
 									
 									// store web content
+									items = new ArrayList<>(data.contents().size());
 									for(Entry<String, String> e : data.contents().entrySet()) {
 										DBObject newItem = new BasicDBObject(2);
 										newItem.put("url", e.getKey());
@@ -114,21 +118,23 @@ public class YQLDumpFileCrawler {
 									}
 									webpageSink.store(items);
 									
+									final int maxBulkSize = chunkSize*10;
 									// store alignments
+									items = new ArrayList<>(maxBulkSize);
 									for(AlignmentCandidate alignment : currentAlignments) {
-										items.clear();
-										
+										HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size()); 
 										for(String origUrl : alignment.originalUrls()) {
-											Object url;
 											if(cachedRedirects.containsKey(origUrl)) {
-												url = cachedRedirects.get(origUrl);
+												actualUrls.add(cachedRedirects.get(origUrl));
 											} else {
-												url = data.redirects().get(origUrl);
+												actualUrls.add(data.redirects().get(origUrl));
 											}
-											
+										}
+										
+										for(String url : actualUrls) {
 											if(url!=null) {
 												for(String ht : alignment.hashtags()) {
-													DBObject newItem = new BasicDBObject(2);
+													DBObject newItem = new BasicDBObject(3);
 													newItem.put("hashtag", ht);
 													newItem.put("url", url);
 													newItem.put("tweet_id", alignment.tweetId());
@@ -136,7 +142,12 @@ public class YQLDumpFileCrawler {
 												}
 											}
 										}
-
+										if(items.size()>maxBulkSize*.9) {
+											alignmentSink.store(items);
+											items = new ArrayList<>(maxBulkSize);
+										}
+									}
+									if(items.size()>0) {
 										alignmentSink.store(items);
 									}
 								} catch (Throwable t) {
@@ -226,7 +237,8 @@ public class YQLDumpFileCrawler {
 		
 		try {
 			synchronized (this) {
-				this.wait(200);
+				// wait for 60s (there might be some pending requests)
+				this.wait(60000);
 			}
 			guard.close();
 			crawler.close();
@@ -236,7 +248,7 @@ public class YQLDumpFileCrawler {
 		System.out.println();
 	}
 	
-	private static class AlignmentCandidate {
+	static class AlignmentCandidate {
 		private final Object tweetId;
 		private final List<String> originalUrls;
 		private final List<String> hashtags;

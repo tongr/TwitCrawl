@@ -218,29 +218,42 @@ public class YQLCrawler implements Closeable {
 		return true;
 	}
 	private boolean extractRedirects(DBObject resultItem, Map<String, String> redirectSink) {
-		if(resultItem.containsField("url")) {
-			final String url = (String) resultItem.get("url");
+		if(resultItem.containsField("url") && resultItem.containsField("redirect")) {
 			// typical format of redirect headers:
-			// "redirect": [
-			// {
-			// "url": "http://ow.ly/nf5Hv",
-			// "status": "301",
-			// "headers": {
-			// "Location": "http://bit.ly/13M0qc8"
+			// { "redirect" : 
+			//   [ 
+			//     {
+			//       "from" : "http://www.schoener-fernsehen.com" , 
+			//       "to" : "http://schoener-fernsehen.com/"
+			//     } , 
+			//     { 
+			//       "from" : "http://schoener-fernsehen.com/" , 
+			//       "to" : "http://schoener-fernsehen.com/"
+			//     } 
+			//   ] , 
+			//   "url" : "http://schoener-fernsehen.com/" , 
+			//   "status" : "200" , 
+			//   "headers" : 
+			//     { 
+			//       "result" : 
+			//         { 
+			//           "server" : "YTS/1.19.11" , 
+			//           "date" : "Wed, 25 Sep 2013 16:45:47 GMT" , 
+			//           "content-type" : "text/html" , 
+			//           "vary" : "Accept-Encoding" , 
+			//           "x-powered-by" : "PHP/5.3.10-1ubuntu3.8" , 
+			//           "content-encoding" : "gzip" , 
+			//           "age" : "2" , 
+			//           "transfer-encoding" : "chunked" , 
+			//           "proxy-connection" : "keep-alive"
+			//         }
+			//     } , 
+			//   "content" : "<html xmlns=\"http://www..."
 			// }
-			// },
-			// {
-			// "url": "http://bit.ly/13M0qc8",
-			// "status": "301",
-			// "headers": {
-			// "Location":
-			// "http://072gdf.force.com/apoyovial?ticketid=500a000000VRIATAA5"
-			// }
-			// }
-			// ]
+			final String contentUrl = (String) resultItem.get("url");
 			
 			
-			if(url!=null && !url.isEmpty() && resultItem.containsField("redirect")) {
+			if(contentUrl!=null && !contentUrl.isEmpty() && resultItem.get("redirect")!=null) {
 				List<?> redirects;
 				if (resultItem.get("redirect") instanceof List) {
 					redirects = (List<?>) resultItem.get("redirect");
@@ -248,12 +261,12 @@ public class YQLCrawler implements Closeable {
 					// in case of only one value:
 					redirects = Arrays.asList(resultItem.get("redirect"));
 				}
-				// update redirect sink
+				// update redirect sink --> use url as final redirect goal (do not track all intermediate steps)
 				for(int i=0;i<redirects.size();i++) {
 					if(redirects.get(i)!=null && redirects.get(i) instanceof DBObject) {
 						final DBObject redirect = (DBObject) redirects.get(i);
-						if(redirect.containsField("url")) {
-							redirectSink.put((String) redirect.get("url"), url);
+						if(redirect.containsField("from")) {
+							redirectSink.put((String) redirect.get("from"), contentUrl);
 						}
 					}
 				}
