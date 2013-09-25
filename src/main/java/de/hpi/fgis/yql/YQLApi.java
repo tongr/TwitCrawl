@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
+import java.util.logging.Logger;
 
 import com.mongodb.DBObject;
 import com.ning.http.client.AsyncCompletionHandler;
@@ -31,6 +32,7 @@ import de.hpi.fgis.concurrency.AsyncResultHandler;
 public abstract class YQLApi implements Closeable {
 	private final String yqlBaseURI;
 	private final AsyncHttpClient asyncClient;
+	protected static final Logger LOG = Logger.getLogger(YQLApi.class.getName());
 
 	protected YQLApi() {
 		this("http://query.yahooapis.com/v1/public/yql?");
