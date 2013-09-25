@@ -1,0 +1,29 @@
+see also: http://developer.yahoo.com/yql/guide/yql-storage-new-records.html
+after creating a new record, you got sth. like this:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<query xmlns:yahoo="http://www.yahooapis.com/v1/base.rng"
+    yahoo:count="1" yahoo:created="1970-01-01T00:00:00Z" yahoo:lang="en-US">
+    <diagnostics>
+        <publiclyCallable>true</publiclyCallable>
+        <user-time>5456</user-time>
+        <service-time>5437</service-time>
+        <build-version>38230</build-version>
+    </diagnostics> 
+    <results>
+        <inserted>
+            <execute>store://XXXXXXXXXXXXXXXXXXX</execute>
+            <select>store://YYYYYYYYYYYYYYYYYYYYYY</select>
+            <update>store://ZZZZZZZZZ</update>
+        </inserted>
+    </results>
+</query>
+
+to update the content:
+update yql.storage set value="<?xml version='1.0' encoding='UTF-8'?> <table ... </table>" where name="store://ZZZZZZZZZ"
+
+to show the content:
+select * from yql.storage where name="store://YYYYYYYYYYYYYYYYYYYYYY"
+
+to use the content, i.e. as a table (depends on the parameter list within the content definition, in this case: url):
+USE "store://XXXXXXXXXXXXXXXXXXX" AS DATA; select * from DATA where url = 'http://www.google.com'
