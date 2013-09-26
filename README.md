@@ -20,8 +20,9 @@ This prototype package supports different utilities for the extraction of tweet 
 
 ## How to
 1. mvn install
-2. opt: *mvn eclipse:eclipse*
-3. configure MongoDB account in src/main/resources/mongodb.private.conf (see also src/main/resources/mongodb.example.conf)
+1. opt: create fat-jar *mvn package*
+1. opt: *mvn eclipse:eclipse*
+1. configure MongoDB account in src/main/resources/mongodb.private.conf (see also src/main/resources/mongodb.example.conf)
 
 
 ## License
