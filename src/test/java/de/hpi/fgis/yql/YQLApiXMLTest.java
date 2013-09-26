@@ -50,13 +50,13 @@ public class YQLApiXMLTest {
 	
 
 	@Test
-	public void testQuery() throws IOException {
+	public void testQuery() throws IOException, DeserializationException {
 		String expectedJson = "{\"place\":{\"xmlns\":\"http://where.yahooapis.com/v1/schema.rng\",\"name\":\"Berlin\"}}";
 		DBObject results = api.query("select name from geo.places where woeid = '638242'");
 		assertEquals(JSON.parse(expectedJson), results);
 	}
 	@Test
-	public void testQueryMeta() throws IOException {
+	public void testQueryMeta() throws IOException, DeserializationException {
 		DBObject meta = api.queryMeta("select name from geo.places where woeid = '638242'", new HashMap<String, String>());
 		assertEquals("en-US", ((DBObject)meta.get("query")).get("yahoo:lang"));
 	}

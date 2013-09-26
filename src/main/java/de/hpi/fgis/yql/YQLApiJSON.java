@@ -37,19 +37,20 @@ public class YQLApiJSON extends YQLApi {
 	 * @see de.hpi.fgis.yql.YQLApi#parse(java.io.InputStream)
 	 */
 	@Override
-	protected DBObject parse(InputStream jsonIn) {
+	protected DBObject parse(InputStream jsonIn) throws DeserializationException {
 		String data = convertStreamToString(jsonIn, "UTF-8");
 		try {
 			if(data==null || !data.matches("(?s)(?m)^[\\s]*\\{.*")) {
 				// log the erroneous data
-				LOG.warning("Ignoring illegal serialization format (expecting proper JSON): " + data);
-				return null;
+				LOG.info("Ignoring illegal serialization format (expecting proper JSON): " + data);
+				
+				throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data);
 			}
 			return (DBObject) JSON.parse(data);
 		} catch (JSONParseException e) {
-			LOG.log(Level.WARNING, "Unable to parse JSON string: " + data, e);
-			System.out.println(data);
-			throw e;
+			LOG.log(Level.INFO, "Unable to parse JSON string: " + data, e);
+			throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data, e);
+			
 		}
 		
 	}

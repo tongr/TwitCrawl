@@ -1,5 +1,6 @@
 package de.hpi.fgis;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
@@ -9,6 +10,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Queue;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
@@ -20,6 +23,7 @@ import de.hpi.fgis.database.mongodb.MongoDBObjectManager;
 import de.hpi.fgis.twitter.TwitterDumpFileReader;
 import de.hpi.fgis.util.FileUtil;
 import de.hpi.fgis.util.ProgressReport;
+import de.hpi.fgis.yql.DeserializationException;
 import de.hpi.fgis.yql.YQLAccessRateLimitGuard;
 import de.hpi.fgis.yql.YQLCrawler;
 import de.hpi.fgis.yql.YQLCrawler.CrawlingResults;
@@ -40,6 +44,7 @@ public class YQLDumpFileCrawler {
 		
 		new YQLDumpFileCrawler().parse(new FileUtil().scan(folder, "tweets_w_links_n_htags_.*\\.stream", false).toArray(new String[0]));
 	}
+	protected static final Logger LOG = Logger.getLogger(YQLDumpFileCrawler.class.getName());
 	private boolean finished = false;
 	private final int chunkSize = 100;
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
@@ -50,11 +55,30 @@ public class YQLDumpFileCrawler {
 	private void parse(String... files) {
 		System.out.println(new Date().toString());
 		
+		final Queue<AlignmentCandidate> alignmentCandidates = new LinkedList<>();
 		
+		Closeable taskCloser = initJobs(alignmentCandidates);
+		addAlignmentTasks(alignmentCandidates, files);
+		
+		System.out.println(new Date().toString());
+		
+		try {
+			synchronized (this) {
+				// wait for 60s (there might be some pending requests)
+				this.wait(60000);
+			}
+			taskCloser.close();
+		} catch (InterruptedException e) {
+			// ignore
+		} catch (Exception e) {
+			LOG.log(Level.WARNING, "Unable to close pending modules", e);
+		}
+	}
+	
+	private Closeable initJobs(final Queue<AlignmentCandidate> alignmentCandidates) {
 		final YQLAccessRateLimitGuard guard = YQLAccessRateLimitGuard.getInstance();
 		final YQLCrawler crawler = new YQLCrawler();
-		
-		final Queue<AlignmentCandidate> alignmentCandidates = new LinkedList<>();
+		final Queue<AlignmentCandidate> retryAlignmentCandidates = new LinkedList<>();
 		final ProgressReport rpt = new ProgressReport("Crawling urls from tweets ...").setUnit("tweets").setReport(2500);
 		RateLimitedTask task = new RateLimitedTask() {
 			@Override
@@ -64,30 +88,63 @@ public class YQLDumpFileCrawler {
 					final ArrayList<AlignmentCandidate> currentAlignments = new ArrayList<>(chunkSize);
 					final HashMap<String, String> cachedRedirects = new HashMap<>();
 					
-					synchronized (alignmentCandidates) {
-						while(toBeCrawled.size()<chunkSize && alignmentCandidates.size()>0) {
-							AlignmentCandidate candidate = alignmentCandidates.poll();
-							currentAlignments.add(candidate);
+					boolean retry = false;
+					synchronized (retryAlignmentCandidates) {
+						if(retryAlignmentCandidates.size()>0) {
 							
-							// TODO move out of the synchronized block?
-							for(String url : candidate.originalUrls()) {
-								DBObject redirect = redirectMan.findOne(url);
+							while(toBeCrawled.size()<chunkSize && retryAlignmentCandidates.size()>0) {
+								AlignmentCandidate candidate = retryAlignmentCandidates.poll();
+								currentAlignments.add(candidate);
 								
-								if(redirect==null) {
-									toBeCrawled.add(url);
-								} else {
-									cachedRedirects.put(url, (String) redirect.get("to")); 
+								for(String url : candidate.originalUrls()) {
+									DBObject redirect = redirectMan.findOne(url);
+									
+									if(redirect==null) {
+										toBeCrawled.add(url);
+									} else {
+										cachedRedirects.put(url, (String) redirect.get("to")); 
+									}
+								}
+							}
+							
+							retry = true;
+						}
+					}
+					if(!retry) {
+						synchronized (alignmentCandidates) {
+							while(toBeCrawled.size()<chunkSize && alignmentCandidates.size()>0) {
+								AlignmentCandidate candidate = alignmentCandidates.poll();
+								currentAlignments.add(candidate);
+								
+								for(String url : candidate.originalUrls()) {
+									DBObject redirect = redirectMan.findOne(url);
+									
+									if(redirect==null) {
+										toBeCrawled.add(url);
+									} else {
+										cachedRedirects.put(url, (String) redirect.get("to")); 
+									}
 								}
 							}
 						}
 					}
 					
 					if(toBeCrawled.size()>0) {
+						final boolean isRetry = retry;
 						crawler.crawlAsync(toBeCrawled, new AsyncResultHandler<CrawlingResults>() {
 							
 							@Override
 							public void onThrowable(Throwable t) {
-								t.printStackTrace();
+								if(!(t instanceof IOException || t instanceof DeserializationException)) {
+									LOG.log(Level.WARNING, "Unexpected error occured!", t);
+								} else if (isRetry) {
+									LOG.log(Level.WARNING, "Some data extraction problems occured repeatedly!", t);
+								} else {
+									LOG.log(Level.INFO, "Some data extraction problems occured, retrying in several seconds ... ", t);
+									synchronized (retryAlignmentCandidates) {
+										retryAlignmentCandidates.addAll(currentAlignments);
+									}
+								}
 							}
 							
 							@Override
@@ -168,6 +225,7 @@ public class YQLDumpFileCrawler {
 			public boolean repeat() {
 				if(finished) {
 					rpt.finish();
+					crawler.close();
 					guard.close();
 					return false;
 				}
@@ -176,6 +234,17 @@ public class YQLDumpFileCrawler {
 		};
 		guard.add(task);
 		
+		return new Closeable() {
+			
+			@Override
+			public void close() throws IOException {
+				guard.close();
+				crawler.close();
+			}
+		};
+	}
+
+	private void addAlignmentTasks(final Queue<AlignmentCandidate> alignmentCandidates, String... files) {
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
@@ -233,19 +302,6 @@ public class YQLDumpFileCrawler {
 			}
 		}
 		finished = true;
-		System.out.println(new Date().toString());
-		
-		try {
-			synchronized (this) {
-				// wait for 60s (there might be some pending requests)
-				this.wait(60000);
-			}
-			guard.close();
-			crawler.close();
-		} catch (InterruptedException e) {
-			// ignore
-		}
-		System.out.println();
 	}
 	
 	static class AlignmentCandidate {

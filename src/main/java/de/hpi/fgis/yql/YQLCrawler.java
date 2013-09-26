@@ -63,11 +63,18 @@ public class YQLCrawler implements Closeable {
 	 * 
 	 * @param urls
 	 *            the urls to be crawled
-	 * @return the crawling results including a mapping from an actual url (destination of one or more
-	 *         redirects from a source url) to the content of the actual page as well as redirect information (original_url -> actual_url)
-	 * @throws IOException in case of network problems
+	 * @return the crawling results including a mapping from an actual url
+	 *         (destination of one or more redirects from a source url) to the
+	 *         content of the actual page as well as redirect information
+	 *         (original_url -> actual_url)
+	 * 
+	 * @throws IOException
+	 *             if some network errors occur
+	 * 
+	 * @throws DeserializationException
+	 *             if the deserialization did not working properly
 	 */
-	public CrawlingResults crawl(Collection<String> urls) throws IOException {
+	public CrawlingResults crawl(Collection<String> urls) throws IOException, DeserializationException {
 		if(urls==null || urls.size()<=0) {
 			return new CrawlingResults();
 		}
@@ -276,7 +283,7 @@ public class YQLCrawler implements Closeable {
 		return false;
 	}
 	
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) {
 		final YQLAccessRateLimitGuard guard = YQLAccessRateLimitGuard.getInstance();
 		final YQLCrawler crawler = new YQLCrawler();
 		
@@ -288,8 +295,8 @@ public class YQLCrawler implements Closeable {
 				CrawlingResults results;
 				try {
 					results = crawler.crawl(Arrays.asList("http://bit.ly/13M0qc8","http://ow.ly/nf5Hv", "http://kbstroy.ru/img/mim.php?p=kdw36dfsi1"));
-				} catch (IOException e1) {
-					e1.printStackTrace();
+				} catch (Exception e) {
+					e.printStackTrace();
 					return;
 				}
 				

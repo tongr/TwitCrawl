@@ -50,8 +50,11 @@ public abstract class YQLApi implements Closeable {
 	 * @param is
 	 *            the data string to be parsed
 	 * @return the actual data object
+	 * 
+	 * @throws DeserializationException
+	 *             if the deserialization did not working properly
 	 */
-	protected abstract DBObject parse(InputStream is);
+	protected abstract DBObject parse(InputStream is) throws DeserializationException;
 
 	/**
 	 * gets the format string used/provided by the YQL endpoint
@@ -71,8 +74,11 @@ public abstract class YQLApi implements Closeable {
 	 *         forcast data)
 	 * @throws IOException
 	 *             if some network errors occur
+	 * 
+	 * @throws DeserializationException
+	 *             if the deserialization did not working properly
 	 */
-	public DBObject query(String query) throws IOException {
+	public DBObject query(String query) throws IOException, DeserializationException {
 		return query(query, (Collection<Entry<String, String>>) null);
 	}
 	
@@ -111,9 +117,12 @@ public abstract class YQLApi implements Closeable {
 	 *         forcast data)
 	 * @throws IOException
 	 *             if some network errors occur
+	 * 
+	 * @throws DeserializationException
+	 *             if the deserialization did not working properly
 	 */
 	public DBObject query(String query, String tableName, String tableDefURI)
-			throws IOException {
+			throws IOException, DeserializationException {
 		return query(query,
 				Arrays.asList((Entry<String, String>) new SimpleEntry<>(
 						tableName, tableDefURI)));
@@ -135,7 +144,8 @@ public abstract class YQLApi implements Closeable {
 	 *            "<a href='http://www.datatables.org/weather/weather.bylocation.xml'>http://www.datatables.org/weather/weather.bylocation.xml</a>"
 	 *            )
 	 * @param asyncResultHandler
-	 *            an asynchronous result processor that gets informed if the results are available
+	 *            an asynchronous result processor that gets informed if the
+	 *            results are available
 	 * @throws IOException
 	 *             if some network errors occur
 	 */
@@ -164,9 +174,12 @@ public abstract class YQLApi implements Closeable {
 	 *         forcast data)
 	 * @throws IOException
 	 *             if some network errors occur
+	 * 
+	 * @throws DeserializationException
+	 *             if the deserialization did not working properly
 	 */
 	public DBObject query(String query, Map<String, String> tables)
-			throws IOException {
+			throws IOException, DeserializationException {
 		return query(query, tables.entrySet());
 	}
 
@@ -185,8 +198,9 @@ public abstract class YQLApi implements Closeable {
 	 *            "<a href='http://www.datatables.org/weather/weather.bylocation.xml'>http://www.datatables.org/weather/weather.bylocation.xml</a>"
 	 *            )
 	 * @param asyncResultHandler
-	 *            an asynchronous result processor that gets informed if the results are available
-	 *            
+	 *            an asynchronous result processor that gets informed if the
+	 *            results are available
+	 * 
 	 * @throws IOException
 	 *             if some network errors occur
 	 */
@@ -213,16 +227,22 @@ public abstract class YQLApi implements Closeable {
 	 *         forcast data)
 	 * @throws IOException
 	 *             if some network errors occur
+	 * 
+	 * @throws DeserializationException
+	 *             if the deserialization did not working properly
 	 */
 	public DBObject queryMeta(String query, Map<String, String> tables)
-			throws IOException {
+			throws IOException, DeserializationException {
 		return queryMeta(query, tables.entrySet(), true);
 	}
 
 	/**
 	 * simple util method to create a String from an input stream
-	 * @param is the input stream to read
-	 * @param charset the charset
+	 * 
+	 * @param is
+	 *            the input stream to read
+	 * @param charset
+	 *            the charset
 	 * @return the resulting string content
 	 */
 	protected String convertStreamToString(InputStream is, String charset) {
@@ -236,7 +256,7 @@ public abstract class YQLApi implements Closeable {
 	}
 
 	private DBObject query(String query,
-			Collection<Entry<String, String>> tableDefs) throws IOException {
+			Collection<Entry<String, String>> tableDefs) throws IOException, DeserializationException {
 		return extractResults(queryMeta(query, tableDefs, false));
 	}
 	
@@ -247,12 +267,20 @@ public abstract class YQLApi implements Closeable {
 		asyncClient.preparePost(yqlBaseURI).setParameters(toParameterMap(query, tableDefs, debug)).execute(new AsyncCompletionHandler<DBObject>(){
 
 		    @Override
-		    public DBObject onCompleted(Response response) throws Exception{
-		    	DBObject data = extractResults(parse(response.getResponseBodyAsStream()));
+		    public DBObject onCompleted(Response response) {
+		    	DBObject data;
+		    	try {
+					data = extractResults(parse(response.getResponseBodyAsStream()));
+			    	asyncResultHandler.onCompleted(data);
+				} catch (IOException  e) {
+					// forward exception w/o event
+			    	asyncResultHandler.onThrowable(e);
+				} catch (DeserializationException e) {
+					// forward exception w/o event
+			    	asyncResultHandler.onThrowable(e);
+				}
 		    	
-		    	//asyncHttpClient.close();
-		    	asyncResultHandler.onCompleted(data);
-		        return data;
+		        return null;
 		    }
 
 		    @Override
@@ -267,7 +295,7 @@ public abstract class YQLApi implements Closeable {
 
 	private DBObject queryMeta(String query,
 			Collection<Entry<String, String>> tableDefs, boolean debug)
-			throws IOException {
+			throws IOException, DeserializationException {
 		// asyncClient.prepareGet(yqlBaseURI) does not work with parameter definitions
 		ListenableFuture<Response> response = asyncClient.preparePost(yqlBaseURI).setParameters(toParameterMap(query, tableDefs, debug)).execute();
 		
@@ -326,5 +354,4 @@ public abstract class YQLApi implements Closeable {
 	public void close() {
 		asyncClient.close();
 	}
-	
 }
