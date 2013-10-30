@@ -8,7 +8,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -64,8 +63,8 @@ public class YQLDumpFileCrawler {
 		
 		try {
 			synchronized (this) {
-				// wait for 60s (there might be some pending requests)
-				this.wait(60000);
+				// wait for 10min (there might be some pending requests)
+				this.wait(600000);
 			}
 			taskCloser.close();
 		} catch (InterruptedException e) {
@@ -153,38 +152,44 @@ public class YQLDumpFileCrawler {
 									return;
 								}
 								try {
-									ArrayList<DBObject> items = new ArrayList<>(data.redirects().size());
+									ArrayList<DBObject> redirectItems = new ArrayList<>(data.urls().size());
+									ArrayList<DBObject> webpageItems = new ArrayList<>(data.urls().size());
 
-									// store redirects
-									for(Entry<String, String> e : data.redirects().entrySet()) {
-										DBObject newItem = new BasicDBObject(2);
-										newItem.put("from", e.getKey());
-										newItem.put("to", e.getValue());
-										items.add(newItem);
+									for(String url : data.urls()) {
+										// store redirects
+										if(data.redirect(url)!=null) {
+											DBObject newItem = new BasicDBObject(2);
+											newItem.put("from", url);
+											newItem.put("to", data.redirect(url));
+											redirectItems.add(newItem);
+										}
+										// store web content & header
+										BasicDBObject newWebPageItem = new BasicDBObject(3);
+										if(data.content(url)!=null) {
+											newWebPageItem.put("url", url);
+											newWebPageItem.put("content", data.content(url));
+										}
+										if(data.header(url)!=null) {
+											newWebPageItem.put("url", url);
+											newWebPageItem.put("headers", new BasicDBObject(data.header(url)));
+										}
+										if(newWebPageItem.containsField("url")) {
+											webpageItems.add(newWebPageItem);
+										}
 									}
-									redirectMan.store(items);
-
-									
-									// store web content
-									items = new ArrayList<>(data.contents().size());
-									for(Entry<String, String> e : data.contents().entrySet()) {
-										DBObject newItem = new BasicDBObject(2);
-										newItem.put("url", e.getKey());
-										newItem.put("content", e.getValue());
-										items.add(newItem);
-									}
-									webpageSink.store(items);
+									redirectMan.store(redirectItems);
+									webpageSink.store(webpageItems);
 									
 									final int maxBulkSize = chunkSize*10;
 									// store alignments
-									items = new ArrayList<>(maxBulkSize);
+									ArrayList<DBObject> alignmentItems = new ArrayList<>(maxBulkSize);
 									for(AlignmentCandidate alignment : currentAlignments) {
 										HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size()); 
 										for(String origUrl : alignment.originalUrls()) {
 											if(cachedRedirects.containsKey(origUrl)) {
 												actualUrls.add(cachedRedirects.get(origUrl));
 											} else {
-												actualUrls.add(data.redirects().get(origUrl));
+												actualUrls.add(data.redirect(origUrl));
 											}
 										}
 										
@@ -195,17 +200,17 @@ public class YQLDumpFileCrawler {
 													newItem.put("hashtag", ht);
 													newItem.put("url", url);
 													newItem.put("tweet_id", alignment.tweetId());
-													items.add(newItem);
+													alignmentItems.add(newItem);
 												}
 											}
 										}
-										if(items.size()>maxBulkSize*.9) {
-											alignmentSink.store(items);
-											items = new ArrayList<>(maxBulkSize);
+										if(alignmentItems.size()>maxBulkSize*.9) {
+											alignmentSink.store(alignmentItems);
+											alignmentItems = new ArrayList<>(maxBulkSize);
 										}
 									}
-									if(items.size()>0) {
-										alignmentSink.store(items);
+									if(alignmentItems.size()>0) {
+										alignmentSink.store(alignmentItems);
 									}
 								} catch (Throwable t) {
 									t.printStackTrace();
@@ -249,7 +254,7 @@ public class YQLDumpFileCrawler {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
 			TwitterDumpFileReader reader = new TwitterDumpFileReader(file).showProgress(false);
-			ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*10);
+			ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*30);
 			
 			
 			for(DBObject tweet : reader) {
@@ -259,7 +264,7 @@ public class YQLDumpFileCrawler {
 					@SuppressWarnings("unchecked")
 					final List<String> listOfHashtags = (List<String>)tweet.get("hashtags");
 					
-					// ignore spam tweets with particular hashtags
+					/* ignore spam tweets with particular hashtags
 					boolean spam = false;
 					for(String ht : listOfHashtags) {
 						if("gameinsight".equalsIgnoreCase(ht) || "nowplaying".equalsIgnoreCase(ht) || "listenlive".equalsIgnoreCase(ht)) {
@@ -270,34 +275,45 @@ public class YQLDumpFileCrawler {
 					if(spam) {
 						continue;
 					}
+					//*/
 					
 					int alignmentCandidateCount;
 					tweetStack.add(tweet);
+					if(tweetStack.size()>chunkSize*25) {
+						// persist tweets immediately
+						synchronized (tweetSink) {
+							tweetSink.store(tweetStack);
+							tweetStack.clear();
+						}
+					}
 					
 					if(listOfUrls.size()>0 && listOfHashtags.size()>0) {
 						synchronized (alignmentCandidates) {
 							alignmentCandidates.add(new AlignmentCandidate(tweet.get("tweet_id"), listOfUrls, listOfHashtags));
 							alignmentCandidateCount = alignmentCandidates.size();
 						}
-						while(alignmentCandidateCount>chunkSize*5) {
-							// persist tweets
-							if(tweetStack.size()>0) {
-								tweetSink.store(tweetStack);
-								tweetStack.clear();
-							} else {
-								try {
-									synchronized (reader) {
-										reader.wait(200);
-									}
-								} catch (InterruptedException e) {
-									// ignore
+						while(alignmentCandidateCount>chunkSize*10) {
+							// wait for the candidate count to be low enough
+							try {
+								synchronized (reader) {
+									reader.wait(200);
 								}
+							} catch (InterruptedException e) {
+								// ignore
 							}
 							synchronized (alignmentCandidates) {
 								alignmentCandidateCount = alignmentCandidates.size();
 							}
 						}
 					}
+				}
+			}
+
+			if(tweetStack.size()>0) {
+				// persist missing tweets
+				synchronized (tweetSink) {
+					tweetSink.store(tweetStack);
+					tweetStack.clear();
 				}
 			}
 		}

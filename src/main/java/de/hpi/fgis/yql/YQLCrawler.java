@@ -5,9 +5,10 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
+import java.util.Set;
 
 import com.mongodb.DBObject;
 
@@ -29,31 +30,54 @@ public class YQLCrawler implements Closeable {
 	 *
 	 */
 	public static class CrawlingResults {
+		private final Set<String> urls = new HashSet<>();
+		private final Map<String, Map<String,String>> headers;
 		private final Map<String, String> contents;
 		private final Map<String, String> redirects;
 		
 		public CrawlingResults() {
-			this(new HashMap<String, String>(), new HashMap<String, String>());
+			this(new HashMap<String, Map<String,String>>(), new HashMap<String, String>(), new HashMap<String, String>());
 		}
-		
-		public CrawlingResults(Map<String, String> contents, Map<String, String> redirects) {
+
+		public CrawlingResults(Map<String, Map<String,String>> headers, Map<String, String> contents, Map<String, String> redirects) {
+			this.headers = headers;
 			this.contents = contents;
 			this.redirects = redirects;
+			urls.addAll(this.headers.keySet());
+			urls.addAll(this.contents.keySet());
+			urls.addAll(this.redirects.keySet());
 		}
 
 		/**
-		 * the contents of crawled resources (actual_url -> content)
-		 * @return a mapping from an actual url (destination of one or more redirects from a source url) to the content of the actual page (actual_url -> content)
+		 * the urls crawled resources
+		 * @return a set of crawled urls
 		 */
-		public Map<String, String> contents() {
-			return contents;
+		public Set<String> urls() {
+			return urls;
+		}
+		/**
+		 * the http header information of the specified url
+		 * @param url the url to get header information for
+		 * @return the header information of the url
+		 */
+		public Map<String,String> header(String url) {
+			return headers.get(url);
+		}
+		/**
+		 * the content of the specified url
+		 * @param url the url to get content for
+		 * @return the content of the url
+		 */
+		public String content(String url) {
+			return contents.get(url);
 		}
 		/**
 		 * the redirect information (original_url -> actual_url)
-		 * @return the redirects
+		 * @param url the source url (original_url)
+		 * @return the redirects (actual_url)
 		 */
-		public Map<String, String> redirects() {
-			return redirects;
+		public String redirect(String url) {
+			return redirects.get(url);
 		}
 	}
 	private final YQLApiJSON api = new YQLApiJSON();
@@ -78,6 +102,7 @@ public class YQLCrawler implements Closeable {
 		if(urls==null || urls.size()<=0) {
 			return new CrawlingResults();
 		}
+		Map<String, Map<String,String>> headerMap = new HashMap<>();
 		Map<String, String> contentMap = new HashMap<>();
 		Map<String, String> redirectSink = new HashMap<>();
 		
@@ -109,6 +134,7 @@ public class YQLCrawler implements Closeable {
 				if(resultList.get(i)!=null && resultList.get(i) instanceof DBObject) {
 					DBObject resultItem = (DBObject) resultList.get(i);
 					if(extractContent(resultItem, contentMap)) {
+						extractHeader(resultItem, headerMap);
 						extractRedirects(resultItem, redirectSink);
 					}
 				}
@@ -116,7 +142,7 @@ public class YQLCrawler implements Closeable {
 			
 		}
 
-		return new CrawlingResults(contentMap, redirectSink);
+		return new CrawlingResults(headerMap, contentMap, redirectSink);
 	}
 	
 	/**
@@ -140,6 +166,7 @@ public class YQLCrawler implements Closeable {
 				new AsyncResultHandler<DBObject>() {
 					@Override
 					public void onCompleted(DBObject results) {
+						Map<String, Map<String,String>> headerMap = new HashMap<>();
 						Map<String, String> contentMap = new HashMap<>();
 						Map<String, String> redirectSink = new HashMap<>();
 						
@@ -162,6 +189,7 @@ public class YQLCrawler implements Closeable {
 								if(resultList.get(i)!=null && resultList.get(i) instanceof DBObject) {
 									DBObject resultItem = (DBObject) resultList.get(i);
 									if(extractContent(resultItem, contentMap)) {
+										extractHeader(resultItem, headerMap);
 										extractRedirects(resultItem, redirectSink);
 									}
 								}
@@ -169,7 +197,7 @@ public class YQLCrawler implements Closeable {
 							
 						}
 						
-						asyncResultHandler.onCompleted(new CrawlingResults(contentMap, redirectSink));
+						asyncResultHandler.onCompleted(new CrawlingResults(headerMap, contentMap, redirectSink));
 					}
 
 					@Override
@@ -283,6 +311,56 @@ public class YQLCrawler implements Closeable {
 		return false;
 	}
 	
+	private Map<String,String> extractHeader(DBObject resultItem, Map<String, Map<String,String>> headerMap) {
+		// typical format of the api:
+		//	 {
+		//	    "redirect": {
+		//	     "from": "http://www.amazon.com/dp/B00F67BBLO",
+		//	     "to": "http://www.amazon.com/New-Jersey-Suzanne-D-Williams-ebook/dp/B00F67BBLO"
+		//	    },
+		//	    "url": "http://www.amazon.com/New-Jersey-Suzanne-D-Williams-ebook/dp/B00F67BBLO",
+		//	    "status": "200",
+		//	    "headers": {
+		//	     "result": {
+		//	      "date": "Wed, 30 Oct 2013 19:05:45 GMT",
+		//	      "server": "ATS/4.0.1",
+		//	      "pragma": "no-cache",
+		//	      "x-amz-id-1": "1WF4G9A3XSMGVWN0MTM0",
+		//	      "p3p": "policyref=\"http://www.amazon.com/w3c/p3p.xml\",CP=\"CAO DSP LAW CUR ADM IVAo IVDo CONo OTPo OUR DELi PUBi OTRi BUS PHY ONL UNI PUR FIN COM NAV INT DEM CNT STA HEA PRE LOC GOV OTC \"",
+		//	      "cache-control": "no-cache",
+		//	      "x-frame-options": "SAMEORIGIN",
+		//	      "expires": "-1",
+		//	      "x-amz-id-2": "k4zBu9KoyTyoO74h4z44Hgcio17fG+QcjJdXYifliaA4nsFJ5z10YPXp/EJPmFOL",
+		//	      "vary": "Accept-Encoding,User-Agent",
+		//	      "content-encoding": "gzip",
+		//	      "content-type": "text/html; charset=ISO-8859-1",
+		//	      "age": "1",
+		//	      "transfer-encoding": "chunked",
+		//	      "proxy-connection": "keep-alive"
+		//	     }
+		//	    },
+		//	    "content": "<html>\n<head>\n<script... </html>"
+		//	   }
+		HashMap<String, String> header = new HashMap<>();
+		if(resultItem.containsField("url")) {
+			if(resultItem.containsField("headers") && resultItem.get("headers")!=null && resultItem.get("headers") instanceof DBObject) {
+				DBObject headerInfo = (DBObject) resultItem.get("headers");
+				for(String headerKey : headerInfo.keySet()) {
+					if(headerInfo.get(headerKey)!=null && headerInfo.get(headerKey) instanceof String) {
+						header.put(headerKey, (String)headerInfo.get("headerInfo"));
+					}
+				}
+			}
+			if(resultItem.containsField("status") && resultItem.get("status")!=null && resultItem.get("status") instanceof String) {
+				header.put("status", (String) resultItem.get("status"));
+			}
+			if(header.size()>0) {
+				headerMap.put((String) resultItem.get("url"), header);
+			}
+		}
+		return header;
+	}
+	
 	public static void main(String[] args) {
 		final YQLAccessRateLimitGuard guard = YQLAccessRateLimitGuard.getInstance();
 		final YQLCrawler crawler = new YQLCrawler();
@@ -299,21 +377,29 @@ public class YQLCrawler implements Closeable {
 					e.printStackTrace();
 					return;
 				}
-				
-				
-				System.out.println("contents:");
-				for(Entry<String, String> e : results.contents().entrySet()) {
-					System.out.println(e.getKey());
-					System.out.print(" --> ");
-					System.out.println(ContentExtractor.CanolaExtractor.extractText(e.getValue()));
+				for(String url : results.urls()) {
+					System.out.println("redirects:");
+
+					if(results.redirect(url)!=null) {
+						System.out.print(url);
+						System.out.print(" --> ");
+						System.out.println(results.redirect(url));
+					}
 				}
 				
-				System.out.println("redirects:");
-				for(Entry<String, String> e : results.redirects().entrySet()) {
-					System.out.print(e.getKey());
-					System.out.print(" --> ");
-					System.out.println(e.getValue());
-				} 
+				for(String url : results.urls()) {
+					if(results.header(url)!=null) {
+						System.out.print(url);
+						System.out.print(" --> header: ");
+						System.out.println(results.header(url));
+					}
+					
+					if(results.content(url)!=null) {
+						if(results.header(url)==null) System.out.println(url);
+						System.out.print(" --> ");
+						System.out.println(ContentExtractor.CanolaExtractor.extractText(results.content(url)));
+					}
+				}
 			}
 			
 			@Override
