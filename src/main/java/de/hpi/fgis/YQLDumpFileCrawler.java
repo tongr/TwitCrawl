@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -153,16 +154,19 @@ public class YQLDumpFileCrawler {
 								}
 								try {
 									ArrayList<DBObject> redirectItems = new ArrayList<>(data.urls().size());
+									
+									// store redirects
+									for(Entry<String, String> e : data.redirects().entrySet()) {
+										DBObject newItem = new BasicDBObject(2);
+										newItem.put("from", e.getKey());
+										newItem.put("to", e.getValue());
+										redirectItems.add(newItem);
+									}
+									redirectMan.store(redirectItems);
+									
 									ArrayList<DBObject> webpageItems = new ArrayList<>(data.urls().size());
 
 									for(String url : data.urls()) {
-										// store redirects
-										if(data.redirect(url)!=null) {
-											DBObject newItem = new BasicDBObject(2);
-											newItem.put("from", url);
-											newItem.put("to", data.redirect(url));
-											redirectItems.add(newItem);
-										}
 										// store web content & header
 										BasicDBObject newWebPageItem = new BasicDBObject(3);
 										if(data.content(url)!=null) {
@@ -177,7 +181,6 @@ public class YQLDumpFileCrawler {
 											webpageItems.add(newWebPageItem);
 										}
 									}
-									redirectMan.store(redirectItems);
 									webpageSink.store(webpageItems);
 									
 									final int maxBulkSize = chunkSize*10;
@@ -189,7 +192,7 @@ public class YQLDumpFileCrawler {
 											if(cachedRedirects.containsKey(origUrl)) {
 												actualUrls.add(cachedRedirects.get(origUrl));
 											} else {
-												actualUrls.add(data.redirect(origUrl));
+												actualUrls.add(data.redirects().get(origUrl));
 											}
 										}
 										
