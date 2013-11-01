@@ -1,0 +1,145 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<table xmlns:i='http://query.yahooapis.com/v1/schema/internalTable.xsd' xmlns='http://query.yahooapis.com/v1/schema/table.xsd'>
+    <meta>
+        <author>Marcel Duran</author>
+        <description>Request (GET) a URL and retrieves its content (non-binary) and headers. User Agent string (ua) and the xPath expression (xpath) are optional. Additionally, one can choose to return the document content (i.e. HTML) as (escaped) string value, iff asstring=='true' (i.e., useful in case of JSON format queries). To accept non-HTML content types, the parameter 'contenttype' (default 'text/html') has to be set to the correct value (i.e., 'application/xml'); iff 'contenttype' is set to empty string or false the xpath functionality can not be applied.</description>
+        <sampleQuery>select * from {table} where url='http://www.yahoo.com/'</sampleQuery>
+        <sampleQuery>select * from {table} where url in ('http://www.yahoo.com/','http://www.google.com/') and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
+        <sampleQuery>select * from {table} where url in ('http://www.yahoo.com/','http://www.google.com/') and xpath='//a' and asstring='true' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
+        <sampleQuery>select * from {table} where url = 'http://www.w3schools.com/xml/note.xml' and contenttype='text/xml' and xpath='//body' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
+        <sampleQuery>select * from {table} where url = 'http://www.andrewpatton.com/countrylist.csv' and contenttype='text/csv' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
+    </meta>
+    <bindings>
+        <select itemPath='' produces='XML'>
+            <inputs>
+               <key id='url' type='xs:string' paramType='variable' required='true'/>
+               <key id='ua' type='xs:string' paramType='variable' required='false'/>
+               <key id='contenttype' type='xs:string' paramType='variable' required='false' default='text/html' />
+               <key id='xpath' type='xs:string' paramType='variable' required='false' />
+               <key id='asstring' type='xs:string' paramType='variable' required='false' default='false' />
+            </inputs>
+            <execute>
+                <![CDATA[
+                    var req, resp, header, tag, redirect, location, redir, count, content,
+                        data = <resources/>,
+                        headers = <headers/>;
+
+                    req = y.rest(url);
+					
+					/* wait for max. 15s */
+					req.timeout(15000);
+
+                    /* set user agent */
+                    if (ua) {
+                        req.header('User-Agent', ua);
+                    }
+                    if( contenttype && ( asstring!='true' || contenttype!=='text/html' || xpath ) ) {
+                        /* for xpath expressions, valid html is required --> jTidy is enforced for text/html */
+                        /* we run jTidy only if necessary (it changes the HTML content such that problems might occur, i.e., removing html comments within css tags */
+                        req.accept( contenttype );
+                    }
+
+                    /* compression */
+                    req.header('Accept-Encoding', 'gzip,deflate');
+                    req.decompress(true);
+
+                    /* bad servers don't set charset */
+                    /* YQL tries UTF-8 first then we try ISO as a fallback */
+                    req.fallbackCharset('ISO-8859-1');
+
+                    /* fetch url */
+                    resp = req.get();
+					
+					/* wait for the async requests */
+					y.sync(true);
+
+                    /* check redirect */
+                    redirect = y.diagnostics.redirect;
+                    count = redirect && redirect.length();
+
+                    var contentURL = url;
+                    if (count) {
+                        var redirectInfo = {};
+                        for (var i = 0; i < count; i += 1) {
+                            var redir = redirect[i];
+                            var fromLocation = redir.@from;
+                            var toLocation = redir.toString();
+                            if(fromLocation&&toLocation) {
+                                redirectInfo[fromLocation] = toLocation;
+                            }
+                        }
+
+                        var redirectPath = [contentURL];
+                        while(redirectInfo[contentURL]!=undefined && redirectInfo[contentURL]!=contentURL) {
+                            contentURL = redirectInfo[contentURL];
+                            redirectPath.push(contentURL);
+                        }
+                        var relevantRedirectInfo = {};
+                        for (var i = 0; i < redirectPath.length-1; i += 1) {
+                            relevantRedirectInfo[redirectPath[i]] = redirectInfo[redirectPath[i]];
+                        }
+
+                        for(var from in relevantRedirectInfo){
+                            var to = relevantRedirectInfo[from];
+
+                            data.resources +=
+                                    <redirect>
+                                        <from>{from}</from>
+                                        <to>{to}</to>
+                                    </redirect>;
+                        }
+                    }
+
+                    /* get headers */
+                    headerInfo = resp.headers;
+                    headers.headers = y.jsonToXml(headerInfo);
+
+                    /* set result */
+                    data.resources += <url>{contentURL}</url>;
+                    data.resources += <status>{resp.status}</status>;
+                    data.resources += headers;
+
+
+                    try {
+                        headerType = (headerInfo && headerInfo['content-type']) || '';
+                        if( contenttype ) {
+                            if ( headerType.indexOf( contenttype ) >= 0 ) {
+                                /* get uncompressed response content for non-binary */
+                                content = resp.response;
+                                if( xpath ) {
+                                    if( content instanceof  XML ) {
+                                        content = y.xpath(content, xpath);
+
+                                        /* return xml/html content as string */
+                                        if(asstring=='true') {
+                                            content = content.toXMLString();
+                                        }
+                                    } else {
+                                        /* empty response for binaries etc. */
+                                        content = '';
+                                    }
+                                } else if( asstring=='true' && content instanceof  XML ) {
+                                    content = content.toXMLString();
+                                }
+                            } else {
+                                /* empty response for illegal content type */
+                                content = '';
+                            }
+                        } else {
+                            content = resp.response;
+                        }
+                    } catch (err) {
+                        y.log(err);
+                        /* empty response on error */
+                        content = '';
+                    }
+
+                    data.resources += <content>{content}</content>;
+
+                    response.maxAge = 300;
+                    response.object = data;
+                ]]>
+            </execute>
+        </select>
+    </bindings>
+</table>

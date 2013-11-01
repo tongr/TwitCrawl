@@ -3,6 +3,8 @@ package de.hpi.fgis;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -10,6 +12,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Queue;
+import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -46,6 +49,8 @@ public class YQLDumpFileCrawler {
 	}
 	protected static final Logger LOG = Logger.getLogger(YQLDumpFileCrawler.class.getName());
 	private boolean finished = false;
+	// on average we will (re-)try to retrieve the data of an url 3-times before rejecting the resource
+	private final double retryProbability = 2D/3D;
 	private final int chunkSize = 100;
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
@@ -56,35 +61,65 @@ public class YQLDumpFileCrawler {
 		System.out.println(new Date().toString());
 		
 		final Queue<AlignmentCandidate> alignmentCandidates = new LinkedList<>();
+		final Queue<AlignmentCandidate> retryAlignmentCandidates = new LinkedList<>();
 		
-		Closeable taskCloser = initJobs(alignmentCandidates);
-		addAlignmentTasks(alignmentCandidates, files);
+		Closeable taskCloser = initJobs(alignmentCandidates, retryAlignmentCandidates);
+		addAlignmentTasks(alignmentCandidates, Collections.unmodifiableCollection(retryAlignmentCandidates), files);
 		
-		System.out.println(new Date().toString());
+		
+		
 		
 		try {
+			int pending;
+			do {
+				synchronized (this) {
+					// wait for 1s (for the pending requests to be executed)
+					this.wait(1000);
+				}
+				
+				synchronized (alignmentCandidates) {
+					pending = alignmentCandidates.size();
+				}
+			
+			} while( pending > 0 );
+			do {
+				synchronized (this) {
+					// wait for 1s (there might be some pending requests)
+					this.wait(1000);
+				}
+				
+				synchronized (retryAlignmentCandidates) {
+					pending = retryAlignmentCandidates.size();
+				}
+			} while( pending > 0 );
+			
 			synchronized (this) {
-				// wait for 10min (there might be some pending requests)
+				// wait for 10min (there might be some pending requests that will be re-tried forever, we'll cancel this after 10min)
 				this.wait(600000);
 			}
-			taskCloser.close();
+			System.out.println(new Date().toString());
 		} catch (InterruptedException e) {
 			// ignore
-		} catch (Exception e) {
-			LOG.log(Level.WARNING, "Unable to close pending modules", e);
+		} finally {
+			try {
+				taskCloser.close();
+			} catch (Exception e) {
+				LOG.log(Level.WARNING, "Unable to close pending modules", e);
+			}
 		}
 	}
 	
-	private Closeable initJobs(final Queue<AlignmentCandidate> alignmentCandidates) {
+	private Closeable initJobs(final Queue<AlignmentCandidate> alignmentCandidates, final Queue<AlignmentCandidate> retryAlignmentCandidates) {
 		final YQLAccessRateLimitGuard guard = YQLAccessRateLimitGuard.getInstance();
 		final YQLCrawler crawler = new YQLCrawler();
-		final Queue<AlignmentCandidate> retryAlignmentCandidates = new LinkedList<>();
+		
 		final ProgressReport rpt = new ProgressReport("Crawling urls from tweets ...").setUnit("tweets").setReport(2500);
 		RateLimitedTask task = new RateLimitedTask() {
+			private final Random r = new Random();
 			@Override
 			public void run() {
 				try {
-					final ArrayList<String> toBeCrawled = new ArrayList<>(chunkSize*2);
+					final HashSet<String> toBeCrawled = new HashSet<>(chunkSize*2);
 					final ArrayList<AlignmentCandidate> currentAlignments = new ArrayList<>(chunkSize);
 					final HashMap<String, String> cachedRedirects = new HashMap<>();
 					
@@ -183,18 +218,28 @@ public class YQLDumpFileCrawler {
 									}
 									webpageSink.store(webpageItems);
 									
+									ArrayList<AlignmentCandidate> toBeReCrawled = new ArrayList<>(currentAlignments.size());
 									final int maxBulkSize = chunkSize*10;
 									// store alignments
 									ArrayList<DBObject> alignmentItems = new ArrayList<>(maxBulkSize);
 									for(AlignmentCandidate alignment : currentAlignments) {
-										HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size()); 
+										HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size());
+										ArrayList<String> toBeRetried = new ArrayList<>(alignment.originalUrls().size());
 										for(String origUrl : alignment.originalUrls()) {
 											if(cachedRedirects.containsKey(origUrl)) {
 												actualUrls.add(cachedRedirects.get(origUrl));
-											} else {
+											} else if(data.redirects().containsKey(origUrl)) {
 												actualUrls.add(data.redirects().get(origUrl));
+											} else if( r.nextDouble() < retryProbability ) {
+												// no redirects found! --> retry later (w/ specific retry probability)
+												toBeRetried.add(origUrl);
 											}
 										}
+										
+										if(toBeRetried.size()>0) {
+											toBeReCrawled.add(new AlignmentCandidate(alignment.tweetId(), toBeRetried, alignment.hashtags()));
+										}
+										
 										
 										for(String url : actualUrls) {
 											if(url!=null) {
@@ -214,6 +259,10 @@ public class YQLDumpFileCrawler {
 									}
 									if(alignmentItems.size()>0) {
 										alignmentSink.store(alignmentItems);
+									}
+									
+									synchronized (retryAlignmentCandidates) {
+										retryAlignmentCandidates.addAll(toBeReCrawled);
 									}
 								} catch (Throwable t) {
 									t.printStackTrace();
@@ -252,7 +301,7 @@ public class YQLDumpFileCrawler {
 		};
 	}
 
-	private void addAlignmentTasks(final Queue<AlignmentCandidate> alignmentCandidates, String... files) {
+	private void addAlignmentTasks(final Queue<AlignmentCandidate> alignmentCandidates, Collection<AlignmentCandidate> pendingRetryCandidates, String... files) {
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
@@ -280,7 +329,6 @@ public class YQLDumpFileCrawler {
 					}
 					//*/
 					
-					int alignmentCandidateCount;
 					tweetStack.add(tweet);
 					if(tweetStack.size()>chunkSize*25) {
 						// persist tweets immediately
@@ -293,10 +341,10 @@ public class YQLDumpFileCrawler {
 					if(listOfUrls.size()>0 && listOfHashtags.size()>0) {
 						synchronized (alignmentCandidates) {
 							alignmentCandidates.add(new AlignmentCandidate(tweet.get("tweet_id"), listOfUrls, listOfHashtags));
-							alignmentCandidateCount = alignmentCandidates.size();
 						}
-						while(alignmentCandidateCount>chunkSize*10) {
-							// wait for the candidate count to be low enough
+
+						int pendingAlignmentCandidateCount;
+						do {
 							try {
 								synchronized (reader) {
 									reader.wait(200);
@@ -305,9 +353,13 @@ public class YQLDumpFileCrawler {
 								// ignore
 							}
 							synchronized (alignmentCandidates) {
-								alignmentCandidateCount = alignmentCandidates.size();
+								pendingAlignmentCandidateCount = alignmentCandidates.size();
 							}
-						}
+							synchronized (pendingRetryCandidates) {
+								pendingAlignmentCandidateCount = pendingRetryCandidates.size();
+							}
+							// wait for the candidate count to be low enough (loop until this is the case)
+						} while(pendingAlignmentCandidateCount>chunkSize*10);
 					}
 				}
 			}

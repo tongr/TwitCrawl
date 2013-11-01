@@ -219,7 +219,7 @@ public class YQLCrawler implements Closeable {
 			}
 			q.append('\'').append(url).append('\'');
 		}
-		q.append(") and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)' and htmlstr='true'");
+		q.append(") and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)' and contenttype='text/html' and asstring='true'");
 		
 		return q.toString();
 	}
@@ -287,23 +287,26 @@ public class YQLCrawler implements Closeable {
 			final String contentUrl = (String) resultItem.get("url");
 			
 			
-			if(contentUrl!=null && !contentUrl.isEmpty() && resultItem.get("redirect")!=null) {
-				List<?> redirects;
-				if (resultItem.get("redirect") instanceof List) {
-					redirects = (List<?>) resultItem.get("redirect");
-				} else {
-					// in case of only one value:
-					redirects = Arrays.asList(resultItem.get("redirect"));
-				}
-				// update redirect sink --> use url as final redirect goal (do not track all intermediate steps)
-				for(int i=0;i<redirects.size();i++) {
-					if(redirects.get(i)!=null && redirects.get(i) instanceof DBObject) {
-						final DBObject redirect = (DBObject) redirects.get(i);
-						if(redirect.containsField("from")) {
-							redirectSink.put((String) redirect.get("from"), contentUrl);
+			if(contentUrl!=null && !contentUrl.isEmpty() ) {
+				if( resultItem.get("redirect")!=null) {
+					List<?> redirects;
+					if (resultItem.get("redirect") instanceof List) {
+						redirects = (List<?>) resultItem.get("redirect");
+					} else {
+						// in case of only one value:
+						redirects = Arrays.asList(resultItem.get("redirect"));
+					}
+					// update redirect sink --> use url as final redirect goal (do not track all intermediate steps)
+					for(int i=0;i<redirects.size();i++) {
+						if(redirects.get(i)!=null && redirects.get(i) instanceof DBObject) {
+							final DBObject redirect = (DBObject) redirects.get(i);
+							if(redirect.containsField("from")) {
+								redirectSink.put((String) redirect.get("from"), contentUrl);
+							}
 						}
 					}
 				}
+				redirectSink.put(contentUrl, contentUrl);
 				return true;
 			}
 		}
@@ -344,6 +347,9 @@ public class YQLCrawler implements Closeable {
 		if(resultItem.containsField("url")) {
 			if(resultItem.containsField("headers") && resultItem.get("headers")!=null && resultItem.get("headers") instanceof DBObject) {
 				DBObject headerInfo = (DBObject) resultItem.get("headers");
+				if(headerInfo.containsField("result") && headerInfo.get("result")!=null && headerInfo.get("result") instanceof DBObject) {
+					headerInfo = (DBObject) headerInfo.get("result");
+				}
 				for(String headerKey : headerInfo.keySet()) {
 					if(headerInfo.get(headerKey)!=null && headerInfo.get(headerKey) instanceof String) {
 						header.put(headerKey, (String) headerInfo.get(headerKey));
