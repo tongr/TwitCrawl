@@ -122,11 +122,15 @@ public class YQLDumpFileCrawler {
 					final HashSet<String> toBeCrawled = new HashSet<>(chunkSize*2);
 					final ArrayList<AlignmentCandidate> currentAlignments = new ArrayList<>(chunkSize);
 					final HashMap<String, String> cachedRedirects = new HashMap<>();
-					
+
+					int approxCandidateCount = 0;
+					synchronized (alignmentCandidates) {
+						approxCandidateCount = alignmentCandidates.size();
+					}
 					boolean retry = false;
 					synchronized (retryAlignmentCandidates) {
-						if(retryAlignmentCandidates.size()>0) {
-							
+						// execute retries, if the number of retries is higher than the actual candidate list
+						if(retryAlignmentCandidates.size()>approxCandidateCount) {
 							while(toBeCrawled.size()<chunkSize && retryAlignmentCandidates.size()>0) {
 								AlignmentCandidate candidate = retryAlignmentCandidates.poll();
 								currentAlignments.add(candidate);
@@ -142,7 +146,9 @@ public class YQLDumpFileCrawler {
 								}
 							}
 							
-							retry = true;
+							if(toBeCrawled.size()>0) {
+								retry = true;
+							}
 						}
 					}
 					if(!retry) {
