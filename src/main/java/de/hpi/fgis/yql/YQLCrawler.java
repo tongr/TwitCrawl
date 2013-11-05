@@ -80,6 +80,7 @@ public class YQLCrawler implements Closeable {
 		}
 	}
 	private final YQLApiJSON api = new YQLApiJSON();
+	private long requestTimeout = 5000;
 
 	/**
 	 * crawls the specified urls and returns a map (actual_url -> content)
@@ -207,8 +208,24 @@ public class YQLCrawler implements Closeable {
 				});
 	}
 
-	private String createQuery(Collection<String> urls)
-			throws IOException {
+	/**
+	 * set the maximal allowed request time for a single http resource (in ms)
+	 * @param requestTimeout maximal allowed request time for a single http resource (in ms)
+	 * @return this {@link YQLCrawler} instalce
+	 */
+	public YQLCrawler requestTimeout(long requestTimeout) {
+		this.requestTimeout = requestTimeout;
+		return this;
+	}
+	/**
+	 * get the maximal allowed request time for a single http resource (in ms)
+	 * @return
+	 */
+	public long requestTimeout() {
+		return requestTimeout;
+	}
+	
+	private String createQuery(Collection<String> urls) throws IOException {
 		StringBuilder q = new StringBuilder("select * from DATA where url in (");
 		boolean first = true;
 		for (String url : urls) {
@@ -219,7 +236,9 @@ public class YQLCrawler implements Closeable {
 			}
 			q.append('\'').append(url).append('\'');
 		}
-		q.append(") and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)' and contenttype='text/html' and asstring='true'");
+		q.append(") and contenttype='text/html' and asstring='true' and timeout='")
+			.append(requestTimeout())
+			.append("' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'");
 		
 		return q.toString();
 	}

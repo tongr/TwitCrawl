@@ -2,12 +2,13 @@
 <table xmlns:i='http://query.yahooapis.com/v1/schema/internalTable.xsd' xmlns='http://query.yahooapis.com/v1/schema/table.xsd'>
     <meta>
         <author>Marcel Duran</author>
-        <description>Request (GET) a URL and retrieves its content (non-binary) and headers. User Agent string (ua) and the xPath expression (xpath) are optional. Additionally, one can choose to return the document content (i.e. HTML) as (escaped) string value, iff asstring=='true' (i.e., useful in case of JSON format queries). To accept non-HTML content types, the parameter 'contenttype' (default 'text/html') has to be set to the correct value (i.e., 'application/xml'); iff 'contenttype' is set to empty string or false the xpath functionality can not be applied.</description>
+        <description>Request (GET) a URL and retrieves its content (non-binary) and headers. User Agent string (ua) and the xPath expression (xpath) are optional. Additionally, one can choose to return the document content (i.e. HTML) as (escaped) string value, iff asstring=='true' (i.e., useful in case of JSON format queries). To accept non-HTML content types, the parameter 'contenttype' (default 'text/html') has to be set to the correct value (i.e., 'application/xml'); iff 'contenttype' is set to empty string or false the xpath functionality can not be applied. The timeout parameter regulates the maximal amount of time to wait for a response of the specified resource.</description>
         <sampleQuery>select * from {table} where url='http://www.yahoo.com/'</sampleQuery>
         <sampleQuery>select * from {table} where url in ('http://www.yahoo.com/','http://www.google.com/') and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
         <sampleQuery>select * from {table} where url in ('http://www.yahoo.com/','http://www.google.com/') and xpath='//a' and asstring='true' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
         <sampleQuery>select * from {table} where url = 'http://www.w3schools.com/xml/note.xml' and contenttype='text/xml' and xpath='//body' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
         <sampleQuery>select * from {table} where url = 'http://www.andrewpatton.com/countrylist.csv' and contenttype='text/csv' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
+        <sampleQuery>select * from {table} where url = 'http://www.yahoo.com/' and timeout='2500' and ua='Mozilla/5.0 (compatible; MSIE 6.0; Windows NT 5.1)'</sampleQuery>
     </meta>
     <bindings>
         <select itemPath='' produces='XML'>
@@ -15,8 +16,9 @@
                <key id='url' type='xs:string' paramType='variable' required='true'/>
                <key id='ua' type='xs:string' paramType='variable' required='false'/>
                <key id='contenttype' type='xs:string' paramType='variable' required='false' default='text/html' />
-               <key id='xpath' type='xs:string' paramType='variable' required='false' />
-               <key id='asstring' type='xs:string' paramType='variable' required='false' default='false' />
+               <key id='xpath' type='xs:boolean' paramType='variable' required='false' />
+               <key id='asstring' type='xs:boolean' paramType='variable' required='false' default='false' />
+               <key id='timeout' type='xs:positiveInteger' paramType='variable' required='false' default='5000' />
             </inputs>
             <execute>
                 <![CDATA[
@@ -24,10 +26,8 @@
                         data = <resources/>,
                         headers = <headers/>;
 
-                    req = y.rest(url);
-					
-					/* wait for max. 15s */
-					req.timeout(15000);
+					/* creating request + setting timeout value */
+                    req = y.rest(url).timeout(timeout);
 
                     /* set user agent */
                     if (ua) {

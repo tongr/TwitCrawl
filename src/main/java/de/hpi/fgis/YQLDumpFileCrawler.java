@@ -12,7 +12,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Queue;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -51,6 +51,7 @@ public class YQLDumpFileCrawler {
 	private boolean finished = false;
 	// on average we will (re-)try to retrieve the data of an url 3-times before rejecting the resource
 	private final double retryProbability = 2D/3D;
+	private final long requestTimeout = 7500;
 	private final int chunkSize = 100;
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
@@ -112,10 +113,11 @@ public class YQLDumpFileCrawler {
 	private Closeable initJobs(final Queue<AlignmentCandidate> alignmentCandidates, final Queue<AlignmentCandidate> retryAlignmentCandidates) {
 		final YQLAccessRateLimitGuard guard = YQLAccessRateLimitGuard.getInstance();
 		final YQLCrawler crawler = new YQLCrawler();
+		crawler.requestTimeout(requestTimeout);
 		
 		final ProgressReport rpt = new ProgressReport("Crawling urls from tweets ...").setUnit("tweets").setReport(2500);
 		RateLimitedTask task = new RateLimitedTask() {
-			private final Random r = new Random();
+			
 			@Override
 			public void run() {
 				try {
@@ -242,7 +244,7 @@ public class YQLDumpFileCrawler {
 												actualUrls.add(cachedRedirects.get(origUrl));
 											} else if(data.redirects().containsKey(origUrl)) {
 												actualUrls.add(data.redirects().get(origUrl));
-											} else if( r.nextDouble() < retryProbability ) {
+											} else if( ThreadLocalRandom.current().nextDouble() < retryProbability ) {
 												// no redirects found! --> retry later (w/ specific retry probability)
 												toBeRetried.add(origUrl);
 											}
