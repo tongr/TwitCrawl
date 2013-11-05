@@ -216,7 +216,13 @@ public class YQLDumpFileCrawler {
 										}
 										if(data.header(url)!=null) {
 											newWebPageItem.put("url", url);
-											newWebPageItem.put("headers", new BasicDBObject(data.header(url)));
+											BasicDBObject cleanHeaders = new BasicDBObject(data.header(url).size());
+											for(Entry<String, String> e : data.header(url).entrySet()) {
+												if(e.getKey()!=null) {
+													cleanHeaders.put(e.getKey().replaceAll("\\W", "_"), e.getValue());
+												}
+											}
+											newWebPageItem.put("headers", cleanHeaders);
 										}
 										if(newWebPageItem.containsField("url")) {
 											webpageItems.add(newWebPageItem);
