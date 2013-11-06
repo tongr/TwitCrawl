@@ -3,6 +3,7 @@ package de.hpi.fgis;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -12,6 +13,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -56,7 +58,10 @@ public class YQLDumpFileCrawler {
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
 	private final MongoDBObjectManager alignmentSink = new MongoDBObjectManager("alignments", false);
+	private final MongoDBObjectManager unresolvedAlignmentSink = new MongoDBObjectManager("unresolved_alignments", false);
 	private final MongoDBObjectManager tweetSink = new MongoDBObjectManager("tweets", false);
+	
+	private final Set<String> spamHashTags = new HashSet<>(Arrays.asList("gameinsight", "nowplaying", "listenlive"));
 	
 	private void parse(String... files) {
 		System.out.println(new Date().toString());
@@ -322,7 +327,6 @@ public class YQLDumpFileCrawler {
 			TwitterDumpFileReader reader = new TwitterDumpFileReader(file).showProgress(false);
 			ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*30);
 			
-			
 			for(DBObject tweet : reader) {
 				if(tweet.containsField("urls") && tweet.get("urls") instanceof List && tweet.containsField("hashtags") && tweet.get("hashtags") instanceof List) {
 					@SuppressWarnings("unchecked")
@@ -330,18 +334,61 @@ public class YQLDumpFileCrawler {
 					@SuppressWarnings("unchecked")
 					final List<String> listOfHashtags = (List<String>)tweet.get("hashtags");
 					
-					/* ignore spam tweets with particular hashtags
+					// try to figure out whether this is a spam tweet (contains particular hashtags)
 					boolean spam = false;
 					for(String ht : listOfHashtags) {
-						if("gameinsight".equalsIgnoreCase(ht) || "nowplaying".equalsIgnoreCase(ht) || "listenlive".equalsIgnoreCase(ht)) {
+						if( ht!=null && spamHashTags.contains(ht.toLowerCase()) ) {
 							spam = true;
 							break;
 						}
 					}
-					if(spam) {
-						continue;
+					
+					// store tweet alignments (unresolved)
+					ArrayList<DBObject> alignmentItems = new ArrayList<>(listOfHashtags.size()*listOfUrls.size());
+					for(String url : new HashSet<>(listOfUrls)) {
+						if(url!=null) {
+							for(String ht : new HashSet<>(listOfHashtags)) {
+								if(ht != null) {
+									DBObject newItem = new BasicDBObject(3);
+									newItem.put("hashtag", ht);
+									newItem.put("url", url);
+									newItem.put("tweet_id", tweet.get("tweet_id"));
+									newItem.put("spam", spam);
+									alignmentItems.add(newItem);
+								}
+							}
+						}
 					}
-					//*/
+
+					unresolvedAlignmentSink.store(alignmentItems);
+					
+					// ignore spam tweets with particular hashtags
+					if(!spam) {
+						// add candidate alignment to the job queue
+						if(listOfUrls.size()>0 && listOfHashtags.size()>0) {
+							synchronized (alignmentCandidates) {
+								alignmentCandidates.add(new AlignmentCandidate(tweet.get("tweet_id"), listOfUrls, listOfHashtags));
+							}
+
+							int pendingAlignmentCandidateCount;
+							do {
+								try {
+									synchronized (reader) {
+										reader.wait(200);
+									}
+								} catch (InterruptedException e) {
+									// ignore
+								}
+								synchronized (alignmentCandidates) {
+									pendingAlignmentCandidateCount = alignmentCandidates.size();
+								}
+								synchronized (pendingRetryCandidates) {
+									pendingAlignmentCandidateCount = pendingRetryCandidates.size();
+								}
+								// wait for the candidate count to be low enough (loop until this is the case)
+							} while(pendingAlignmentCandidateCount>chunkSize*10);
+						}
+					}
 					
 					tweetStack.add(tweet);
 					if(tweetStack.size()>chunkSize*25) {
@@ -350,30 +397,6 @@ public class YQLDumpFileCrawler {
 							tweetSink.store(tweetStack);
 							tweetStack.clear();
 						}
-					}
-					
-					if(listOfUrls.size()>0 && listOfHashtags.size()>0) {
-						synchronized (alignmentCandidates) {
-							alignmentCandidates.add(new AlignmentCandidate(tweet.get("tweet_id"), listOfUrls, listOfHashtags));
-						}
-
-						int pendingAlignmentCandidateCount;
-						do {
-							try {
-								synchronized (reader) {
-									reader.wait(200);
-								}
-							} catch (InterruptedException e) {
-								// ignore
-							}
-							synchronized (alignmentCandidates) {
-								pendingAlignmentCandidateCount = alignmentCandidates.size();
-							}
-							synchronized (pendingRetryCandidates) {
-								pendingAlignmentCandidateCount = pendingRetryCandidates.size();
-							}
-							// wait for the candidate count to be low enough (loop until this is the case)
-						} while(pendingAlignmentCandidateCount>chunkSize*10);
 					}
 				}
 			}
