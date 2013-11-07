@@ -64,8 +64,8 @@ public class YQLDumpFileCrawler {
 		
 		try {
 			synchronized (this) {
-				// wait for 60s (there might be some pending requests)
-				this.wait(60000);
+				// wait for 10min (there might be some pending requests)
+				this.wait(600000);
 			}
 			taskCloser.close();
 		} catch (InterruptedException e) {
@@ -245,12 +245,11 @@ public class YQLDumpFileCrawler {
 	}
 
 	private void addAlignmentTasks(final Queue<AlignmentCandidate> alignmentCandidates, String... files) {
+		ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*10);
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
 			TwitterDumpFileReader reader = new TwitterDumpFileReader(file).showProgress(false);
-			ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*10);
-			
 			
 			for(DBObject tweet : reader) {
 				if(tweet.containsField("urls") && tweet.get("urls") instanceof List && tweet.containsField("hashtags") && tweet.get("hashtags") instanceof List) {
@@ -300,6 +299,10 @@ public class YQLDumpFileCrawler {
 					}
 				}
 			}
+		}
+		if(tweetStack.size()>0) {
+			tweetSink.store(tweetStack);
+			tweetStack.clear();
 		}
 		finished = true;
 	}
