@@ -57,7 +57,7 @@ public class YQLCrawler implements Closeable {
 		}
 	}
 	private final YQLApiJSON api = new YQLApiJSON();
-
+	private final String crawlerDataTable = "store://wXKC36lBNjox9nkm8cMQNl";
 	/**
 	 * crawls the specified urls and returns a map (actual_url -> content)
 	 * 
@@ -88,7 +88,7 @@ public class YQLCrawler implements Closeable {
 		// store://wPdxHE6ILC1Ti4oCGOIs0v (faster)
 		DBObject results = api.query(createQuery(urls),
 								"DATA",
-								"store://wPdxHE6ILC1Ti4oCGOIs0v");
+								crawlerDataTable);
 		
 		if(results!=null && results.containsField("resources") && results.get("resources") instanceof DBObject) {
 			results = (DBObject) results.get("resources");
@@ -136,7 +136,7 @@ public class YQLCrawler implements Closeable {
 
 		api.queryAsync(createQuery(urls),
 				"DATA",
-				"store://wPdxHE6ILC1Ti4oCGOIs0v",
+				crawlerDataTable,
 				new AsyncResultHandler<DBObject>() {
 					@Override
 					public void onCompleted(DBObject results) {
