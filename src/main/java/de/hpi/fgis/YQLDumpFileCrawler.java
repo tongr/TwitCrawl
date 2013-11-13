@@ -47,7 +47,9 @@ public class YQLDumpFileCrawler {
 			folder = args[0];
 		}
 		
-		new YQLDumpFileCrawler().parse(new FileUtil().scan(folder, "tweets_w_links_n_htags_.*\\.stream", false).toArray(new String[0]));
+		String[] files = new FileUtil().scan(folder, "tweets_w_links_n_htags_.*\\.stream", false).toArray(new String[0]);
+		Arrays.sort(files);
+		new YQLDumpFileCrawler().parse(files);
 	}
 	protected static final Logger LOG = Logger.getLogger(YQLDumpFileCrawler.class.getName());
 	private boolean finished = false;
