@@ -17,9 +17,11 @@ import com.mongodb.util.JSON;
 
 public class DBObjectStreamIteratorTest {
 	private DBObjectStreamIterator reader;
+	private DBObjectStreamIterator readerNL;
 	@Before
 	public void setUp() throws Exception {
-		reader = new DBObjectStreamIterator(new BufferedReader(new StringReader("{'mini':true}\nundefined\n{'hihi':1,'hoho':'2'}\n\n{'id':'last'}\n\r{")));
+		reader = new DBObjectStreamIterator(new BufferedReader(new StringReader("{'mini':true}\nundefined\n{'hihi':1,'hoho':'2'}\n\n{'id':'last'}\n\r{")), false);
+		readerNL = new DBObjectStreamIterator(new BufferedReader(new StringReader("{'mini':\ntrue}\nundefined\n{'hihi':1,\n'hoho':'2'}\n\n{'id':'last'}\n\r{")), true);
 	}
 
 	@Test  
@@ -37,6 +39,21 @@ public class DBObjectStreamIteratorTest {
 		}
 	}
 
+	@Test  
+	public void testNextNL() {
+		assertEquals(JSON.parse("{'mini':true}"), readerNL.next());
+		assertEquals(JSON.parse("{'hihi':1,'hoho':'2'}"), readerNL.next());
+		assertEquals(JSON.parse("{'id':'last'}"), readerNL.next());
+		try {
+			// try to read "{"
+			readerNL.next();
+			// woops this isn' a correct JSON object
+			fail();
+		} catch (NoSuchElementException e) {
+			// success!
+		}
+	}
+
 	@Test
 	public void testHasNext() {
 		assertTrue(reader.hasNext());
@@ -47,10 +64,26 @@ public class DBObjectStreamIteratorTest {
 		reader.next();
 		assertFalse(reader.hasNext());
 	}
+	
+	@Test
+	public void testHasNextNL() {
+		assertTrue(readerNL.hasNext());
+		readerNL.next();
+		assertTrue(readerNL.hasNext());
+		readerNL.next();
+		assertTrue(readerNL.hasNext());
+		readerNL.next();
+		assertFalse(readerNL.hasNext());
+	}
 
 	@Test(expected = IllegalStateException.class)  
 	public void testRemove() {
 		reader.remove();
+	}
+
+	@Test(expected = IllegalStateException.class)  
+	public void testRemoveNL() {
+		readerNL.remove();
 	}
 
 }

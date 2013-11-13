@@ -28,7 +28,7 @@ public class DumpFileParser {
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
-			TwitterDumpFileReader reader = new TwitterDumpFileReader(file); 
+			TwitterDumpFileReader reader = new TwitterDumpFileReader(file, true); 
 			tweetsMan.store(reader);
 			tweetsMan.commit();
 		}

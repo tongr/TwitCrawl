@@ -16,9 +16,11 @@ import com.mongodb.util.JSON;
 public class DBObjectStreamIterator implements Iterator<DBObject> {
 	private BufferedReader reader;
 	private DBObject next;
+	private final boolean fixNewlines;
 	
-	public DBObjectStreamIterator(BufferedReader reader) {
+	public DBObjectStreamIterator(BufferedReader reader, boolean fixNewlines) {
 		this.reader = reader;
+		this.fixNewlines = fixNewlines;
 		
 		setNext();
 	}
@@ -43,7 +45,12 @@ public class DBObjectStreamIterator implements Iterator<DBObject> {
 					try {
 						next = (DBObject) JSON.parse(objTxt.toString());
 					} catch (RuntimeException e) {
-						// nothing to do -> try to parse an object including the next line
+						// unable to parse JSON object
+						if(!fixNewlines) {
+							// ignore the last line and continue with the next one (starting with a new object)
+							objTxt.setLength(0);
+						}
+						// otherwise: nothing to do -> try to parse an object including the next line
 					}
 				}
 			} while (next==null && line!=null);

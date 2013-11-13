@@ -324,7 +324,7 @@ public class YQLDumpFileCrawler {
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
-			TwitterDumpFileReader reader = new TwitterDumpFileReader(file).showProgress(false);
+			TwitterDumpFileReader reader = new TwitterDumpFileReader(file, false).showProgress(false);
 			ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*30);
 			
 			for(DBObject tweet : reader) {
