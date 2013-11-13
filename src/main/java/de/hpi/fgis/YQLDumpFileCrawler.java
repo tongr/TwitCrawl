@@ -53,7 +53,7 @@ public class YQLDumpFileCrawler {
 	private boolean finished = false;
 	// on average we will (re-)try to retrieve the data of an url 3-times before rejecting the resource
 	private final double retryProbability = 2D/3D;
-	private final long requestTimeout = 7500;
+	private final long requestTimeout = 20000;
 	private final int chunkSize = 100;
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
