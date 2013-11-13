@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+﻿<?xml version='1.0' encoding='UTF-8'?>
 <table xmlns:i='http://query.yahooapis.com/v1/schema/internalTable.xsd' xmlns='http://query.yahooapis.com/v1/schema/table.xsd'>
     <meta>
         <author>Marcel Duran</author>
@@ -26,32 +26,66 @@
                         data = <resources/>,
                         headers = <headers/>;
 
-					/* creating request + setting timeout value */
-                    req = y.rest(url).timeout(timeout);
+                    var execRequest = function(cType) {
+                        /* creating request + setting timeout value */
+                        req = y.rest(url).timeout(timeout);
 
-                    /* set user agent */
-                    if (ua) {
-                        req.header('User-Agent', ua);
+                        /* set user agent */
+                        if (ua) {
+                            req.header('User-Agent', ua);
+                        }
+                        if( cType && cType!='' ) {
+                            req.accept(cType);
+                        }
+
+                        /* compression */
+                        req.header('Accept-Encoding', 'gzip,deflate');
+                        req.decompress(true);
+
+                        /* bad servers don't set charset */
+                        /* YQL tries UTF-8 first then we try ISO as a fallback */
+                        req.fallbackCharset('ISO-8859-1');
+
+                        /* fetch url */
+                        resp = req.get();
+                        
+                        /* wait for the async requests */
+                        /* y.sync(true); */
+                        
+                        /* necessary to fetch actual content (some lazy/async loading seems to be involved) */
+                        if(!resp.response) {
+                            /* actually nothing important to do here */
+                            y.log('no response for ' + url);
+                        }
+                        
+                        return req;
+                    };
+                    
+                    var checktype = false;
+                    /* in case of html content, w/o xpath and w/ asstring enabled, try to ignore jTidy exceptions */
+                    if( contenttype && contenttype=='text/html' && asstring=='true' && (!xpath || xpath=='') ) {
+                        /* try to fetch url as defined in contenttype*/
+                        try {
+                            req = execRequest( contenttype );
+                        } catch (err) {
+                            var msg = JSON.stringify(err);
+                            if(err.message) {
+                                msg = JSON.stringify(err.message);
+                            }
+                            /* y.log(msg); */
+                            
+                            if( msg.indexOf('The content of elements must consist of well-formed character data or markup.') >= 0 || msg.indexOf('tidy') >= 0  ) {
+                                /* y.log('error: ' + msg); y.log('retrying...'); */
+                                /* trying to run this w/o jTidy (it changes the HTML content such that problems might occur, i.e., removing html comments within css tags */
+                                checktype = true;
+                                req = execRequest(null);
+                            } else {
+                                throw err;
+                            }
+                        }
+                    } else {
+                        req = execRequest( contenttype );
                     }
-                    if( contenttype && ( asstring!='true' || contenttype!=='text/html' || xpath ) ) {
-                        /* for xpath expressions, valid html is required --> jTidy is enforced for text/html */
-                        /* we run jTidy only if necessary (it changes the HTML content such that problems might occur, i.e., removing html comments within css tags */
-                        req.accept( contenttype );
-                    }
-
-                    /* compression */
-                    req.header('Accept-Encoding', 'gzip,deflate');
-                    req.decompress(true);
-
-                    /* bad servers don't set charset */
-                    /* YQL tries UTF-8 first then we try ISO as a fallback */
-                    req.fallbackCharset('ISO-8859-1');
-
-                    /* fetch url */
-                    resp = req.get();
-					
-					/* wait for the async requests */
-					y.sync(true);
 
                     /* check redirect */
                     redirect = y.diagnostics.redirect;
@@ -101,32 +135,34 @@
 
 
                     try {
-                        headerType = (headerInfo && headerInfo['content-type']) || '';
-                        if( contenttype ) {
+                        if(checktype) {
+                            var headerType = (headerInfo && headerInfo['content-type']) || '';
                             if ( headerType.indexOf( contenttype ) >= 0 ) {
-                                /* get uncompressed response content for non-binary */
+                                /* no xpath and asstring expected! */
                                 content = resp.response;
-                                if( xpath ) {
-                                    if( content instanceof  XML ) {
-                                        content = y.xpath(content, xpath);
-
-                                        /* return xml/html content as string */
-                                        if(asstring=='true') {
-                                            content = content.toXMLString();
-                                        }
-                                    } else {
-                                        /* empty response for binaries etc. */
-                                        content = '';
-                                    }
-                                } else if( asstring=='true' && content instanceof  XML ) {
-                                    content = content.toXMLString();
-                                }
                             } else {
                                 /* empty response for illegal content type */
                                 content = '';
                             }
                         } else {
+                            /* get uncompressed response content for non-binary */
                             content = resp.response;
+                            
+                            if( xpath && xpath!='' ) {
+                                if( content instanceof  XML ) {
+                                    content = y.xpath(content, xpath);
+
+                                    /* return xml/html content as string */
+                                    if( asstring=='true' ) {
+                                        content = content.toXMLString();
+                                    }
+                                } else {
+                                    /* empty response for binaries etc. */
+                                    content = '';
+                                }
+                            } else if( asstring=='true' && content instanceof  XML ) {
+                                content = content.toXMLString();
+                            }
                         }
                     } catch (err) {
                         y.log(err);
