@@ -261,7 +261,7 @@ public class YQLDumpFileCrawler implements Closeable {
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
-			TwitterDumpFileReader reader = new TwitterDumpFileReader(file).showProgress(false);
+			TwitterDumpFileReader reader = new TwitterDumpFileReader(file, false).showProgress(false);
 			
 			for(DBObject tweet : reader) {
 				if(tweet.containsField("urls") && tweet.get("urls") instanceof List && tweet.containsField("hashtags") && tweet.get("hashtags") instanceof List) {
