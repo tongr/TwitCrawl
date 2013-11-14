@@ -21,13 +21,14 @@
                         data = <resources/>,
                         headers = <headers/>;
 
+var execRequest = function(cType) {
                     req = y.rest(url);
 
                     /* set user agent */
                     if (ua) {
                         req.header('User-Agent', ua);
                     }
-                    req.accept('text/html');
+                    req.accept(cType);
 
                     /* compression */
                     req.header('Accept-Encoding', 'gzip,deflate');
@@ -39,48 +40,69 @@
 
                     /* fetch url */
                     resp = req.get();
-					
-					/* necessary to fetch actual content (some lazy/async loading seems to be involved) */
-					if(!resp.response) {
-						/* actually nothing important to do here */
-						y.log('no response for ' + url);
-					}
-
+                    
+                    /* necessary to fetch actual content (some lazy/async loading seems to be involved) */
+                    if(!resp.response) {
+                        /* actually nothing important to do here */
+                        y.log('no response for ' + url);
+                    }
+                    
+                    return req;
+};
+var plaincontent = false;
+try {
+    req = execRequest( 'text/html' );
+} catch (err) {
+    var msg = JSON.stringify(err);
+    if(err.message) {
+        msg = JSON.stringify(err.message);
+    }
+    /* y.log(msg); */
+    /* try to ignore jTidy exceptions */
+    if(htmlstr=='true' && (!xpath || xpath=='') && ( msg.indexOf('The content of elements must consist of well-formed character data or markup.') >= 0 || msg.indexOf('tidy') >= 0  ) ) {
+            /* y.log('error: ' + msg); y.log('retrying...'); */
+            /* trying to run this w/o jTidy (it changes the HTML content such that problems might occur, i.e., removing html comments within css tags */
+            plaincontent = true;
+            req = execRequest(null);
+    } else {
+        throw err;
+    }
+}
                     /* check redirect */
                     redirect = y.diagnostics.redirect;
                     count = redirect && redirect.length();
-					
-					var contentURL = url;
+                    
+                    var contentURL = url;
                     if (count) {
-					    var redirectInfo = {};
+                        var redirectInfo = {};
                         for (var i = 0; i < count; i += 1) {
                             var redir = redirect[i];
-							var fromLocation = redir.@from;
-							var toLocation = redir.toString();
-							if(fromLocation&&toLocation) {
-								redirectInfo[fromLocation] = toLocation;
-							}
-						}
-						
-					    var redirectPath = [contentURL];
-						while(redirectInfo[contentURL]!=undefined && redirectInfo[contentURL]!=contentURL) {
-							contentURL = redirectInfo[contentURL];
-							redirectPath.push(contentURL);
-						}
-						var relevantRedirectInfo = {};
-						for (var i = 0; i < redirectPath.length-1; i += 1) {
-							relevantRedirectInfo[redirectPath[i]] = redirectInfo[redirectPath[i]];
-						}
-						
-						for(var from in relevantRedirectInfo){
-							var to = relevantRedirectInfo[from];
-							
-							data.resources +=
+                            var fromLocation = redir.@from;
+                            var toLocation = redir.toString();
+                            if(fromLocation&&toLocation) {
+                                redirectInfo[fromLocation] = toLocation;
+                            }
+                        }
+                        
+                        var redirectPath = [contentURL];
+                        while(redirectInfo[contentURL]!=undefined && redirectInfo[contentURL]!=contentURL) {
+                            contentURL = redirectInfo[contentURL];
+                            redirectPath.push(contentURL);
+                        }
+                        var relevantRedirectInfo = {};
+                        for (var i = 0; i < redirectPath.length-1; i += 1) {
+                            relevantRedirectInfo[redirectPath[i]] = redirectInfo[redirectPath[i]];
+                        }
+                        
+                        for(var from in relevantRedirectInfo){
+                            var to = relevantRedirectInfo[from];
+                            
+                            data.resources +=
                                     <redirect>
                                         <from>{from}</from>
                                         <to>{to}</to>
                                     </redirect>;
-						}
+                        }
                     }
 
                     /* get headers */
@@ -94,14 +116,19 @@
                     /* get uncompressed response content for non-binary */
                     header = resp.headers;
                     header = (header && header['content-type']) || '';
+
                     if (header.indexOf('image') < 0 && header.indexOf('x-shockwave-flash') < 0) {
+
                         try {
-                            content = resp.response;
-							/* apply the xpath expression */
+content = resp.response;
+/* in case of plain content: do not try to do fancy suff with the data */
+if(!plaincontent) {
+                            /* apply the xpath expression */
                             if (xpath) content = y.xpath(content, xpath);
 
-							/* return html content as string */
+                            /* return html content as string */
                             if(htmlstr=='true') content = content.toXMLString();
+}
                         } catch (err) {
                             y.log(err);
                             /* empty response on error */
