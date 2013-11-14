@@ -1,5 +1,6 @@
 package de.hpi.fgis.database.mongodb;
 
+import java.io.Closeable;
 import java.util.Arrays;
 
 import org.apache.lucene.facet.collections.LRUHashMap;
@@ -13,7 +14,7 @@ import com.mongodb.DBObject;
  * @author tongr
  * 
  */
-public class CachedMongoDBObjectManager {
+public class CachedMongoDBObjectManager implements Closeable {
 	private final MongoDBObjectManager persistence;
 	private final String keyAttribute;
 	private final LRUHashMap<Object, DBObject> cache;
@@ -134,5 +135,13 @@ public class CachedMongoDBObjectManager {
 				}
 			}
 		}
+	}
+	/*
+	 * (non-Javadoc)
+	 * @see java.io.Closeable#close()
+	 */
+	@Override
+	public void close() {
+		persistence.close();
 	}
 }

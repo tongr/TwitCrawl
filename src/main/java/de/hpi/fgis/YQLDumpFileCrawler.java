@@ -3,6 +3,7 @@ package de.hpi.fgis;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -10,6 +11,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Queue;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -32,7 +34,7 @@ import de.hpi.fgis.yql.YQLCrawler.CrawlingResults;
  * Basic executor to parse a tweet file and crawl all contained urls via YQL
  * @author tongr
  */
-public class YQLDumpFileCrawler {
+public class YQLDumpFileCrawler implements Closeable {
 	public static void main(String[] args) {
 		String folder;
 		if(args.length<=0) {
@@ -42,7 +44,12 @@ public class YQLDumpFileCrawler {
 			folder = args[0];
 		}
 		
-		new YQLDumpFileCrawler().parse(new FileUtil().scan(folder, "tweets_w_links_n_htags_.*\\.stream", false).toArray(new String[0]));
+		String[] files = new FileUtil().scan(folder, "tweets_w_links_n_htags_.*\\.stream", false).toArray(new String[0]);
+		Arrays.sort(files);
+		
+		try (YQLDumpFileCrawler crawler = new YQLDumpFileCrawler()) {
+			crawler.parse(files);
+		}
 	}
 	protected static final Logger LOG = Logger.getLogger(YQLDumpFileCrawler.class.getName());
 	private boolean finished = false;
@@ -50,7 +57,11 @@ public class YQLDumpFileCrawler {
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
 	private final MongoDBObjectManager alignmentSink = new MongoDBObjectManager("alignments", false);
+	private final MongoDBObjectManager allAlignmentSink = new MongoDBObjectManager("all_alignments", false);
 	private final MongoDBObjectManager tweetSink = new MongoDBObjectManager("tweets", false);
+	
+
+	private final Set<String> spamHashTags = new HashSet<>(Arrays.asList("gameinsight", "nowplaying", "listenlive"));
 	
 	private void parse(String... files) {
 		System.out.println(new Date().toString());
@@ -246,6 +257,7 @@ public class YQLDumpFileCrawler {
 
 	private void addAlignmentTasks(final Queue<AlignmentCandidate> alignmentCandidates, String... files) {
 		ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*10);
+		ArrayList<DBObject> allAlignmentItems = new ArrayList<>(chunkSize*10);
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
@@ -258,14 +270,35 @@ public class YQLDumpFileCrawler {
 					@SuppressWarnings("unchecked")
 					final List<String> listOfHashtags = (List<String>)tweet.get("hashtags");
 					
-					// ignore spam tweets with particular hashtags
+					// try to figure out whether this is a spam tweet (contains particular hashtags)
 					boolean spam = false;
 					for(String ht : listOfHashtags) {
-						if("gameinsight".equalsIgnoreCase(ht) || "nowplaying".equalsIgnoreCase(ht) || "listenlive".equalsIgnoreCase(ht)) {
+						if( ht!=null && spamHashTags.contains(ht.toLowerCase()) ) {
 							spam = true;
 							break;
 						}
 					}
+					
+					// store tweet alignments (unresolved)
+					for(String url : new HashSet<>(listOfUrls)) {
+						if(url!=null) {
+							for(String ht : new HashSet<>(listOfHashtags)) {
+								if(ht != null) {
+									DBObject newItem = new BasicDBObject(3);
+									newItem.put("hashtag", ht);
+									newItem.put("url", url);
+									newItem.put("tweet_id", tweet.get("tweet_id"));
+									newItem.put("spam", spam);
+									allAlignmentItems.add(newItem);
+								}
+							}
+						}
+					}
+					if(allAlignmentItems.size()>chunkSize*5) {
+						allAlignmentSink.store(allAlignmentItems);
+						allAlignmentItems.clear();
+					}
+					
 					if(spam) {
 						continue;
 					}
@@ -304,6 +337,10 @@ public class YQLDumpFileCrawler {
 			tweetSink.store(tweetStack);
 			tweetStack.clear();
 		}
+		if(allAlignmentItems.size()>0) {
+			allAlignmentSink.store(allAlignmentItems);
+			allAlignmentItems.clear();
+		}
 		finished = true;
 	}
 	
@@ -325,5 +362,14 @@ public class YQLDumpFileCrawler {
 		public List<String> hashtags() {
 			return hashtags;
 		}
+	}
+
+	@Override
+	public void close() {
+		redirectMan.close();
+		webpageSink.close();
+		alignmentSink.close();
+		allAlignmentSink.close();
+		tweetSink.close();
 	}
 }
