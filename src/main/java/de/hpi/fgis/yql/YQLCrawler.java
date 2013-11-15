@@ -161,9 +161,8 @@ public class YQLCrawler implements Closeable {
 							for(int i=0;i<resultList.size();i++) {
 								if(resultList.get(i)!=null && resultList.get(i) instanceof DBObject) {
 									DBObject resultItem = (DBObject) resultList.get(i);
-									if(extractContent(resultItem, contentMap)) {
-										extractRedirects(resultItem, redirectSink);
-									}
+									extractContent(resultItem, contentMap);
+									extractRedirects(resultItem, redirectSink);
 								}
 							}
 							
