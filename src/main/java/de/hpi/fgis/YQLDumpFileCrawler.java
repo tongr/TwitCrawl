@@ -236,6 +236,7 @@ public class YQLDumpFileCrawler implements Closeable {
 	}
 	
 	private void storeAlignments(CrawlingResults data, final ArrayList<AlignmentCandidate> currentAlignments, final HashMap<String, String> cachedRedirects) {
+Set<String> alignedWebPages =  new HashSet<>();
 		// store alignments
 		for(AlignmentCandidate alignment : currentAlignments) {
 			HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size()); 
@@ -249,7 +250,10 @@ public class YQLDumpFileCrawler implements Closeable {
 			
 			for(String url : actualUrls) {
 				if(url!=null) {
-					for(String ht : alignment.hashtags()) {
+if(alignment.hashtags().size()>0) {
+	alignedWebPages.add(url);
+}
+					for(String ht : new HashSet<>(alignment.hashtags())) {
 						DBObject newItem = new BasicDBObject(3);
 						newItem.put("hashtag", ht);
 						newItem.put("url", url);
@@ -263,6 +267,14 @@ public class YQLDumpFileCrawler implements Closeable {
 				}
 			}
 		}
+HashSet<String> actualWebPages = new HashSet<>();
+for(Entry<String, String> e : data.contents().entrySet()) {
+	actualWebPages.add(e.getKey());
+}
+actualWebPages.removeAll(alignedWebPages);
+for(String unalignedURL : actualWebPages) {
+	LOG.info("AlignmentError! " + unalignedURL + " not aligned, (redirects:" + data.redirects().get(unalignedURL) + "): " + data.contents().get(unalignedURL).substring(0, 80));
+}
 	}
 	
 	private void storeUnresolvedAlignments(List<String> listOfUrls, List<String> listOfHashtags, Object tweetId, boolean spam) {
