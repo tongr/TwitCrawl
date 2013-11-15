@@ -46,14 +46,14 @@ public class YQLApiJSON extends YQLApi {
 					LOG.log(Level.FINEST, "Ignoring illegal serialization format (expecting proper JSON): " + data);
 				}
 				
-				throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data);
+				throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data.substring(0, 80).replaceAll("[\\n\\r]", "\\\\n"));
 			}
 			return (DBObject) JSON.parse(data);
 		} catch (JSONParseException e) {
 			if(LOG.isLoggable(Level.FINEST)) {
 				LOG.log(Level.FINEST, "Unable to parse JSON string: " + data, e);
 			}
-			throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data, e);
+			throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data.substring(0, 80).replaceAll("[\\n\\r]", "\\\\n"), e);
 			
 		}
 		
