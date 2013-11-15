@@ -171,10 +171,10 @@ public class YQLDumpFileCrawler implements Closeable {
 									
 									storeAlignments(data, currentAlignments, cachedRedirects);
 								} catch (Throwable t) {
-									t.printStackTrace();
+									LOG.log(Level.WARNING, "Dunno what to do! :(", t);
+								} finally {
+									rpt.inc(currentAlignments.size());
 								}
-								
-								rpt.inc(currentAlignments.size());
 							}
 						});
 					}
