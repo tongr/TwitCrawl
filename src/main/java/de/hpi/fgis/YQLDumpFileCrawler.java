@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
+import com.mongodb.MongoInternalException;
 
 import de.hpi.fgis.concurrency.APIAccessRateLimitGuard.RateLimitedTask;
 import de.hpi.fgis.concurrency.AsyncResultHandler;
@@ -151,7 +152,7 @@ public class YQLDumpFileCrawler implements Closeable {
 								} else if (isRetry) {
 									LOG.log(Level.WARNING, "Some data extraction problems occured repeatedly!", t);
 								} else {
-									LOG.log(Level.INFO, "Some data extraction problems occured, retrying in several seconds ... ", t);
+									LOG.log(Level.INFO, "Some data extraction problems occured, retrying in several seconds ... "/*, t*/);
 									synchronized (retryAlignmentCandidates) {
 										retryAlignmentCandidates.addAll(currentAlignments);
 									}
@@ -164,60 +165,11 @@ public class YQLDumpFileCrawler implements Closeable {
 									return;
 								}
 								try {
-									ArrayList<DBObject> items = new ArrayList<>(data.redirects().size());
+									storeRedirects(data);
 
-									// store redirects
-									for(Entry<String, String> e : data.redirects().entrySet()) {
-										DBObject newItem = new BasicDBObject(2);
-										newItem.put("from", e.getKey());
-										newItem.put("to", e.getValue());
-										items.add(newItem);
-									}
-									redirectMan.store(items);
-
+									storeWebPages(data);
 									
-									// store web content
-									items = new ArrayList<>(data.contents().size());
-									for(Entry<String, String> e : data.contents().entrySet()) {
-										DBObject newItem = new BasicDBObject(2);
-										newItem.put("url", e.getKey());
-										newItem.put("content", e.getValue());
-										items.add(newItem);
-									}
-									webpageSink.store(items);
-									
-									final int maxBulkSize = chunkSize*10;
-									// store alignments
-									items = new ArrayList<>(maxBulkSize);
-									for(AlignmentCandidate alignment : currentAlignments) {
-										HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size()); 
-										for(String origUrl : alignment.originalUrls()) {
-											if(cachedRedirects.containsKey(origUrl)) {
-												actualUrls.add(cachedRedirects.get(origUrl));
-											} else {
-												actualUrls.add(data.redirects().get(origUrl));
-											}
-										}
-										
-										for(String url : actualUrls) {
-											if(url!=null) {
-												for(String ht : alignment.hashtags()) {
-													DBObject newItem = new BasicDBObject(3);
-													newItem.put("hashtag", ht);
-													newItem.put("url", url);
-													newItem.put("tweet_id", alignment.tweetId());
-													items.add(newItem);
-												}
-											}
-										}
-										if(items.size()>maxBulkSize*.9) {
-											alignmentSink.store(items);
-											items = new ArrayList<>(maxBulkSize);
-										}
-									}
-									if(items.size()>0) {
-										alignmentSink.store(items);
-									}
+									storeAlignments(data, currentAlignments, cachedRedirects);
 								} catch (Throwable t) {
 									t.printStackTrace();
 								}
@@ -254,10 +206,88 @@ public class YQLDumpFileCrawler implements Closeable {
 			}
 		};
 	}
+	
+	private void storeRedirects(CrawlingResults data) {
+		// store redirects
+		for(Entry<String, String> e : data.redirects().entrySet()) {
+			DBObject newItem = new BasicDBObject(2);
+			newItem.put("from", e.getKey());
+			newItem.put("to", e.getValue());
+			try {
+				redirectMan.store(newItem);
+			} catch (MongoInternalException ex) {
+				LOG.log(Level.WARNING, "Could not store content!", ex);
+			}
+		}
+	}
+	
+	private void storeWebPages(CrawlingResults data) {
+		// store web content
+		for(Entry<String, String> e : data.contents().entrySet()) {
+			DBObject newItem = new BasicDBObject(2);
+			newItem.put("url", e.getKey());
+			newItem.put("content", e.getValue());
+			try {
+				webpageSink.store(newItem);
+			} catch (MongoInternalException ex) {
+				LOG.log(Level.WARNING, "Could not store content!", ex);
+			}
+		}
+	}
+	
+	private void storeAlignments(CrawlingResults data, final ArrayList<AlignmentCandidate> currentAlignments, final HashMap<String, String> cachedRedirects) {
+		// store alignments
+		for(AlignmentCandidate alignment : currentAlignments) {
+			HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size()); 
+			for(String origUrl : alignment.originalUrls()) {
+				if(cachedRedirects.containsKey(origUrl)) {
+					actualUrls.add(cachedRedirects.get(origUrl));
+				} else {
+					actualUrls.add(data.redirects().get(origUrl));
+				}
+			}
+			
+			for(String url : actualUrls) {
+				if(url!=null) {
+					for(String ht : alignment.hashtags()) {
+						DBObject newItem = new BasicDBObject(3);
+						newItem.put("hashtag", ht);
+						newItem.put("url", url);
+						newItem.put("tweet_id", alignment.tweetId());
+						try {
+							alignmentSink.store(newItem);
+						} catch (MongoInternalException ex) {
+							LOG.log(Level.WARNING, "Could not store content!", ex);
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	private void storeUnresolvedAlignments(List<String> listOfUrls, List<String> listOfHashtags, Object tweetId, boolean spam) {
+		// store tweet alignments (unresolved)
+		for(String url : new HashSet<>(listOfUrls)) {
+			if(url!=null) {
+				for(String ht : new HashSet<>(listOfHashtags)) {
+					if(ht != null) {
+						DBObject newItem = new BasicDBObject(3);
+						newItem.put("hashtag", ht);
+						newItem.put("url", url);
+						newItem.put("tweet_id", tweetId);
+						newItem.put("spam", spam);
+						try {
+							allAlignmentSink.store(newItem);
+						} catch (MongoInternalException ex) {
+							LOG.log(Level.WARNING, "Could not store content!", ex);
+						}
+					}
+				}
+			}
+		}
+	}
 
 	private void addAlignmentTasks(final Queue<AlignmentCandidate> alignmentCandidates, String... files) {
-		ArrayList<DBObject> tweetStack = new ArrayList<>(chunkSize*10);
-		ArrayList<DBObject> allAlignmentItems = new ArrayList<>(chunkSize*10);
 		for(String file : files) {
 			System.out.print("parsing tweets of: ");
 			System.out.println(file);
@@ -279,32 +309,18 @@ public class YQLDumpFileCrawler implements Closeable {
 						}
 					}
 					
-					// store tweet alignments (unresolved)
-					for(String url : new HashSet<>(listOfUrls)) {
-						if(url!=null) {
-							for(String ht : new HashSet<>(listOfHashtags)) {
-								if(ht != null) {
-									DBObject newItem = new BasicDBObject(3);
-									newItem.put("hashtag", ht);
-									newItem.put("url", url);
-									newItem.put("tweet_id", tweet.get("tweet_id"));
-									newItem.put("spam", spam);
-									allAlignmentItems.add(newItem);
-								}
-							}
-						}
-					}
-					if(allAlignmentItems.size()>chunkSize*5) {
-						allAlignmentSink.store(allAlignmentItems);
-						allAlignmentItems.clear();
-					}
+					storeUnresolvedAlignments(listOfUrls, listOfHashtags, tweet.get("tweet_id"), spam);
 					
 					if(spam) {
 						continue;
 					}
 					
 					int alignmentCandidateCount;
-					tweetStack.add(tweet);
+					try {
+						tweetSink.store(tweet);
+					} catch (MongoInternalException ex) {
+						LOG.log(Level.WARNING, "Could not store content!", ex);
+					}
 					
 					if(listOfUrls.size()>0 && listOfHashtags.size()>0) {
 						synchronized (alignmentCandidates) {
@@ -312,18 +328,12 @@ public class YQLDumpFileCrawler implements Closeable {
 							alignmentCandidateCount = alignmentCandidates.size();
 						}
 						while(alignmentCandidateCount>chunkSize*5) {
-							// persist tweets
-							if(tweetStack.size()>0) {
-								tweetSink.store(tweetStack);
-								tweetStack.clear();
-							} else {
-								try {
-									synchronized (reader) {
-										reader.wait(200);
-									}
-								} catch (InterruptedException e) {
-									// ignore
+							try {
+								synchronized (reader) {
+									reader.wait(200);
 								}
+							} catch (InterruptedException e) {
+								// ignore
 							}
 							synchronized (alignmentCandidates) {
 								alignmentCandidateCount = alignmentCandidates.size();
@@ -332,14 +342,6 @@ public class YQLDumpFileCrawler implements Closeable {
 					}
 				}
 			}
-		}
-		if(tweetStack.size()>0) {
-			tweetSink.store(tweetStack);
-			tweetStack.clear();
-		}
-		if(allAlignmentItems.size()>0) {
-			allAlignmentSink.store(allAlignmentItems);
-			allAlignmentItems.clear();
 		}
 		finished = true;
 	}
