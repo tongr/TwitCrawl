@@ -277,6 +277,7 @@ public class YQLCrawler implements Closeable {
 						}
 					}
 				}
+				redirectSink.put(contentUrl, contentUrl);
 				return true;
 			}
 		}
