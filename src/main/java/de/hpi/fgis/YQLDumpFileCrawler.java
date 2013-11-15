@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -54,7 +55,7 @@ public class YQLDumpFileCrawler implements Closeable {
 	}
 	protected static final Logger LOG = Logger.getLogger(YQLDumpFileCrawler.class.getName());
 	private boolean finished = false;
-	private final int chunkSize = 100;
+	private final int chunkSize = 10;
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
 	private final MongoDBObjectManager alignmentSink = new MongoDBObjectManager("alignments", false);
@@ -273,7 +274,11 @@ for(Entry<String, String> e : data.contents().entrySet()) {
 }
 actualWebPages.removeAll(alignedWebPages);
 for(String unalignedURL : actualWebPages) {
-	LOG.info("AlignmentError! " + unalignedURL + " not aligned, (redirects:" + data.redirects().get(unalignedURL) + "): " + data.contents().get(unalignedURL).substring(0, 80));
+	TreeSet<String> jobs = new TreeSet<>();
+	for(AlignmentCandidate c : currentAlignments) {
+		jobs.addAll(c.originalUrls());
+	}
+	LOG.info("AlignmentError! " + unalignedURL + " not aligned, (redirects:" + data.redirects().get(unalignedURL) + "): " + jobs.toString());
 }
 	}
 	
