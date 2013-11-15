@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.Set;
-import java.util.TreeSet;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -56,6 +56,7 @@ public class YQLDumpFileCrawler implements Closeable {
 	protected static final Logger LOG = Logger.getLogger(YQLDumpFileCrawler.class.getName());
 	private boolean finished = false;
 	private final int chunkSize = 10;
+	private final double retryProbability = .8;
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
 	private final MongoDBObjectManager alignmentSink = new MongoDBObjectManager("alignments", false);
@@ -150,7 +151,7 @@ public class YQLDumpFileCrawler implements Closeable {
 							public void onThrowable(Throwable t) {
 								if(!(t instanceof IOException || t instanceof DeserializationException)) {
 									LOG.log(Level.WARNING, "Unexpected error occured!", t);
-								} else if (isRetry) {
+								} else if (isRetry && ThreadLocalRandom.current().nextDouble()>retryProbability) {
 									LOG.log(Level.WARNING, "Some data extraction problems occured repeatedly!", t);
 								} else {
 									LOG.log(Level.INFO, "Some data extraction problems occured, retrying in several seconds ... "/*, t*/);
@@ -237,7 +238,6 @@ public class YQLDumpFileCrawler implements Closeable {
 	}
 	
 	private void storeAlignments(CrawlingResults data, final ArrayList<AlignmentCandidate> currentAlignments, final HashMap<String, String> cachedRedirects) {
-Set<String> alignedWebPages =  new HashSet<>();
 		// store alignments
 		for(AlignmentCandidate alignment : currentAlignments) {
 			HashSet<String> actualUrls = new HashSet<>(alignment.originalUrls().size()); 
@@ -251,9 +251,6 @@ Set<String> alignedWebPages =  new HashSet<>();
 			
 			for(String url : actualUrls) {
 				if(url!=null) {
-if(alignment.hashtags().size()>0) {
-	alignedWebPages.add(url);
-}
 					for(String ht : new HashSet<>(alignment.hashtags())) {
 						DBObject newItem = new BasicDBObject(3);
 						newItem.put("hashtag", ht);
@@ -268,18 +265,6 @@ if(alignment.hashtags().size()>0) {
 				}
 			}
 		}
-HashSet<String> actualWebPages = new HashSet<>();
-for(Entry<String, String> e : data.contents().entrySet()) {
-	actualWebPages.add(e.getKey());
-}
-actualWebPages.removeAll(alignedWebPages);
-for(String unalignedURL : actualWebPages) {
-	TreeSet<String> jobs = new TreeSet<>();
-	for(AlignmentCandidate c : currentAlignments) {
-		jobs.addAll(c.originalUrls());
-	}
-	LOG.info("AlignmentError! " + unalignedURL + " not aligned, (redirects:" + data.redirects().get(unalignedURL) + "): " + jobs.toString());
-}
 	}
 	
 	private void storeUnresolvedAlignments(List<String> listOfUrls, List<String> listOfHashtags, Object tweetId, boolean spam) {
