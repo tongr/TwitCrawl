@@ -89,34 +89,8 @@ public class YQLCrawler implements Closeable {
 		DBObject results = api.query(createQuery(urls),
 								"DATA",
 								crawlerDataTable);
-		
-		if(results!=null && results.containsField("resources") && results.get("resources") instanceof DBObject) {
-			results = (DBObject) results.get("resources");
-		} else {
-			results = null;
-		}
-		
-		if( results!=null ) {
-			List<?> resultList;
-			if (results  instanceof List) {
-				resultList = (List<?>) results;
-			} else {
-				// in case of only one value:
-				resultList = Arrays.asList(results);
-			}
-			
-			for(int i=0;i<resultList.size();i++) {
-				if(resultList.get(i)!=null && resultList.get(i) instanceof DBObject) {
-					DBObject resultItem = (DBObject) resultList.get(i);
-					if(extractContent(resultItem, contentMap)) {
-						extractRedirects(resultItem, redirectSink);
-					}
-				}
-			}
-			
-		}
 
-		return new CrawlingResults(contentMap, redirectSink);
+		return extract(results);
 	}
 	
 	/**
@@ -140,35 +114,7 @@ public class YQLCrawler implements Closeable {
 				new AsyncResultHandler<DBObject>() {
 					@Override
 					public void onCompleted(DBObject results) {
-						Map<String, String> contentMap = new HashMap<>();
-						Map<String, String> redirectSink = new HashMap<>();
-						
-						if(results!=null && results.containsField("resources") && results.get("resources") instanceof DBObject) {
-							results = (DBObject) results.get("resources");
-						} else {
-							results = null;
-						}
-						
-						if( results!=null ) {
-							List<?> resultList;
-							if (results  instanceof List) {
-								resultList = (List<?>) results;
-							} else {
-								// in case of only one value:
-								resultList = Arrays.asList(results);
-							}
-							
-							for(int i=0;i<resultList.size();i++) {
-								if(resultList.get(i)!=null && resultList.get(i) instanceof DBObject) {
-									DBObject resultItem = (DBObject) resultList.get(i);
-									extractContent(resultItem, contentMap);
-									extractRedirects(resultItem, redirectSink);
-								}
-							}
-							
-						}
-						
-						asyncResultHandler.onCompleted(new CrawlingResults(contentMap, redirectSink));
+						asyncResultHandler.onCompleted(extract(results));
 					}
 
 					@Override
@@ -177,6 +123,38 @@ public class YQLCrawler implements Closeable {
 					}
 			
 				});
+	}
+	
+	private CrawlingResults extract(DBObject results) {
+		Map<String, String> contentMap = new HashMap<>();
+		Map<String, String> redirectSink = new HashMap<>();
+		
+		if(results!=null && results.containsField("resources") && results.get("resources") instanceof DBObject) {
+			results = (DBObject) results.get("resources");
+		} else {
+			results = null;
+		}
+		
+		if( results!=null ) {
+			List<?> resultList;
+			if (results  instanceof List) {
+				resultList = (List<?>) results;
+			} else {
+				// in case of only one value:
+				resultList = Arrays.asList(results);
+			}
+			
+			for(int i=0;i<resultList.size();i++) {
+				if(resultList.get(i)!=null && resultList.get(i) instanceof DBObject) {
+					DBObject resultItem = (DBObject) resultList.get(i);
+					extractContent(resultItem, contentMap);
+					extractRedirects(resultItem, redirectSink);
+				}
+			}
+			
+		}
+		
+		return new CrawlingResults(contentMap, redirectSink);
 	}
 
 	private String createQuery(Collection<String> urls)
@@ -224,60 +202,62 @@ public class YQLCrawler implements Closeable {
 		return true;
 	}
 	private boolean extractRedirects(DBObject resultItem, Map<String, String> redirectSink) {
-		if(resultItem.containsField("url") && resultItem.containsField("redirect")) {
-			// typical format of redirect headers:
-			// { "redirect" : 
-			//   [ 
-			//     {
-			//       "from" : "http://www.schoener-fernsehen.com" , 
-			//       "to" : "http://schoener-fernsehen.com/"
-			//     } , 
-			//     { 
-			//       "from" : "http://schoener-fernsehen.com/" , 
-			//       "to" : "http://schoener-fernsehen.com/"
-			//     } 
-			//   ] , 
-			//   "url" : "http://schoener-fernsehen.com/" , 
-			//   "status" : "200" , 
-			//   "headers" : 
-			//     { 
-			//       "result" : 
-			//         { 
-			//           "server" : "YTS/1.19.11" , 
-			//           "date" : "Wed, 25 Sep 2013 16:45:47 GMT" , 
-			//           "content-type" : "text/html" , 
-			//           "vary" : "Accept-Encoding" , 
-			//           "x-powered-by" : "PHP/5.3.10-1ubuntu3.8" , 
-			//           "content-encoding" : "gzip" , 
-			//           "age" : "2" , 
-			//           "transfer-encoding" : "chunked" , 
-			//           "proxy-connection" : "keep-alive"
-			//         }
-			//     } , 
-			//   "content" : "<html xmlns=\"http://www..."
-			// }
+		if(resultItem.containsField("url") ) {
 			final String contentUrl = (String) resultItem.get("url");
-			
-			
-			if(contentUrl!=null && !contentUrl.isEmpty() && resultItem.get("redirect")!=null) {
-				List<?> redirects;
-				if (resultItem.get("redirect") instanceof List) {
-					redirects = (List<?>) resultItem.get("redirect");
-				} else {
-					// in case of only one value:
-					redirects = Arrays.asList(resultItem.get("redirect"));
-				}
-				// update redirect sink --> use url as final redirect goal (do not track all intermediate steps)
-				for(int i=0;i<redirects.size();i++) {
-					if(redirects.get(i)!=null && redirects.get(i) instanceof DBObject) {
-						final DBObject redirect = (DBObject) redirects.get(i);
-						if(redirect.containsField("from")) {
-							redirectSink.put((String) redirect.get("from"), contentUrl);
+			redirectSink.put(contentUrl, contentUrl);
+			if(resultItem.containsField("redirect")) {
+				// typical format of redirect headers:
+				// { "redirect" : 
+				//   [ 
+				//     {
+				//       "from" : "http://www.schoener-fernsehen.com" , 
+				//       "to" : "http://schoener-fernsehen.com/"
+				//     } , 
+				//     { 
+				//       "from" : "http://schoener-fernsehen.com/" , 
+				//       "to" : "http://schoener-fernsehen.com/"
+				//     } 
+				//   ] , 
+				//   "url" : "http://schoener-fernsehen.com/" , 
+				//   "status" : "200" , 
+				//   "headers" : 
+				//     { 
+				//       "result" : 
+				//         { 
+				//           "server" : "YTS/1.19.11" , 
+				//           "date" : "Wed, 25 Sep 2013 16:45:47 GMT" , 
+				//           "content-type" : "text/html" , 
+				//           "vary" : "Accept-Encoding" , 
+				//           "x-powered-by" : "PHP/5.3.10-1ubuntu3.8" , 
+				//           "content-encoding" : "gzip" , 
+				//           "age" : "2" , 
+				//           "transfer-encoding" : "chunked" , 
+				//           "proxy-connection" : "keep-alive"
+				//         }
+				//     } , 
+				//   "content" : "<html xmlns=\"http://www..."
+				// }
+				
+				
+				if(contentUrl!=null && !contentUrl.isEmpty() && resultItem.get("redirect")!=null) {
+					List<?> redirects;
+					if (resultItem.get("redirect") instanceof List) {
+						redirects = (List<?>) resultItem.get("redirect");
+					} else {
+						// in case of only one value:
+						redirects = Arrays.asList(resultItem.get("redirect"));
+					}
+					// update redirect sink --> use url as final redirect goal (do not track all intermediate steps)
+					for(int i=0;i<redirects.size();i++) {
+						if(redirects.get(i)!=null && redirects.get(i) instanceof DBObject) {
+							final DBObject redirect = (DBObject) redirects.get(i);
+							if(redirect.containsField("from")) {
+								redirectSink.put((String) redirect.get("from"), contentUrl);
+							}
 						}
 					}
+					return true;
 				}
-				redirectSink.put(contentUrl, contentUrl);
-				return true;
 			}
 		}
 		return false;
@@ -294,7 +274,7 @@ public class YQLCrawler implements Closeable {
 			public void run() {
 				CrawlingResults results;
 				try {
-					results = crawler.crawl(Arrays.asList("http://bit.ly/13M0qc8","http://ow.ly/nf5Hv", "http://kbstroy.ru/img/mim.php?p=kdw36dfsi1"));
+					results = crawler.crawl(Arrays.asList("http://twitition.com/8c4m2"));
 				} catch (Exception e) {
 					e.printStackTrace();
 					return;
