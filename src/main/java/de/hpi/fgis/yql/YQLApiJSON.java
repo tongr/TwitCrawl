@@ -42,13 +42,17 @@ public class YQLApiJSON extends YQLApi {
 		try {
 			if(data==null || !data.matches("(?s)(?m)^[\\s]*\\{.*")) {
 				// log the erroneous data
-				LOG.info("Ignoring illegal serialization format (expecting proper JSON): " + data);
+				if(LOG.isLoggable(Level.FINEST)) {
+					LOG.log(Level.FINEST, "Ignoring illegal serialization format (expecting proper JSON): " + data);
+				}
 				
 				throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data);
 			}
 			return (DBObject) JSON.parse(data);
 		} catch (JSONParseException e) {
-			LOG.log(Level.INFO, "Unable to parse JSON string: " + data, e);
+			if(LOG.isLoggable(Level.FINEST)) {
+				LOG.log(Level.FINEST, "Unable to parse JSON string: " + data, e);
+			}
 			throw new DeserializationException("Unable to parse serialization format (expecting proper JSON): \n" + data, e);
 			
 		}
