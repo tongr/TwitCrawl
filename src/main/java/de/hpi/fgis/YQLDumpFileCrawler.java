@@ -56,7 +56,7 @@ public class YQLDumpFileCrawler implements Closeable {
 	}
 	protected static final Logger LOG = Logger.getLogger(YQLDumpFileCrawler.class.getName());
 	private boolean finished = false;
-	private final int chunkSize = 10;
+	private final int chunkSize = 100;
 	private final double retryProbability = .8;
 	private final CachedMongoDBObjectManager redirectMan = new CachedMongoDBObjectManager(new MongoDBObjectManager("redirects", false), "from", 1000000, true);
 	private final MongoDBObjectManager webpageSink = new MongoDBObjectManager("webpages", false);
