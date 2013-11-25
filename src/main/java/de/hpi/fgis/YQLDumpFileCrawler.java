@@ -13,6 +13,7 @@ import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -149,7 +150,7 @@ public class YQLDumpFileCrawler implements Closeable {
 							
 							@Override
 							public void onThrowable(Throwable t) {
-								if(!(t instanceof IOException || t instanceof DeserializationException)) {
+								if(!(t instanceof IOException || t instanceof DeserializationException || t instanceof TimeoutException)) {
 									LOG.log(Level.WARNING, "Unexpected error occured!", t);
 								} else if (isRetry && ThreadLocalRandom.current().nextDouble()>retryProbability) {
 									LOG.log(Level.WARNING, "Some data extraction problems occured repeatedly!", t);
