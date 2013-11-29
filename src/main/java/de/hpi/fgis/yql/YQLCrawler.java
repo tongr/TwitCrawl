@@ -78,8 +78,6 @@ public class YQLCrawler implements Closeable {
 		if(urls==null || urls.size()<=0) {
 			return new CrawlingResults();
 		}
-		Map<String, String> contentMap = new HashMap<>();
-		Map<String, String> redirectSink = new HashMap<>();
 		
 		// resources for the data table definition:
 		// https://raw.github.com/tongr/yql-tables/master/data/data.headers.xml
