@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +17,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import org.jboss.netty.handler.codec.frame.TooLongFrameException;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
@@ -93,7 +96,7 @@ public class YQLDumpFileCrawler implements Closeable {
 	private Closeable initJobs(final Queue<AlignmentCandidate> alignmentCandidates) {
 		final YQLAccessRateLimitGuard guard = YQLAccessRateLimitGuard.getInstance();
 		final YQLCrawler crawler = new YQLCrawler();
-		final Queue<AlignmentCandidate> retryAlignmentCandidates = new LinkedList<>();
+		final LinkedList<AlignmentCandidate> retryAlignmentCandidates = new LinkedList<>();
 		final ProgressReport rpt = new ProgressReport("Crawling urls from tweets ...").setUnit("tweets").setReport(2500);
 		RateLimitedTask task = new RateLimitedTask() {
 			@Override
@@ -150,7 +153,7 @@ public class YQLDumpFileCrawler implements Closeable {
 							
 							@Override
 							public void onThrowable(Throwable t) {
-								if(!(t instanceof IOException || t instanceof DeserializationException || t instanceof TimeoutException)) {
+								if(!(t instanceof IOException || t instanceof DeserializationException || t instanceof TimeoutException || t instanceof TooLongFrameException)) {
 									LOG.log(Level.WARNING, "Unexpected error occured!", t);
 								} else if (isRetry && ThreadLocalRandom.current().nextDouble()>retryProbability) {
 									LOG.log(Level.WARNING, "Some data extraction problems occured repeatedly!", t);
@@ -158,6 +161,10 @@ public class YQLDumpFileCrawler implements Closeable {
 									LOG.log(Level.INFO, "Some data extraction problems occured, retrying in several seconds ... "/*, t*/);
 									synchronized (retryAlignmentCandidates) {
 										retryAlignmentCandidates.addAll(currentAlignments);
+										if(t instanceof TooLongFrameException) {
+											// shuffle the retry candidates such that the header information might get smaller
+											Collections.shuffle(retryAlignmentCandidates);
+										}
 									}
 								}
 							}
@@ -233,7 +240,7 @@ public class YQLDumpFileCrawler implements Closeable {
 			try {
 				webpageSink.store(newItem);
 			} catch (MongoInternalException ex) {
-				LOG.log(Level.WARNING, "Could not store content!", ex);
+				LOG.log(Level.WARNING, "Could not store content of "+e.getKey()+"!", ex);
 			}
 		}
 	}
